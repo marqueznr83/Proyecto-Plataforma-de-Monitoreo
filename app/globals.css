@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Default to Dark theme tokens when .dark is active */
+    --bg-main: #0b1120;
+    --bg-secondary: #0f172a;
+    --card-bg: rgba(15, 23, 42, 0.85);
+    --card-border: rgba(51, 65, 85, 0.6);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --nav-bg: rgba(11, 17, 32, 0.85);
+    --footer-bg: #070a14;
+  }
+
+  html.light {
+    /* Clean High-Contrast Light Theme Tokens */
+    --bg-main: #f1f5f9;
+    --bg-secondary: #e2e8f0;
+    --card-bg: #ffffff;
+    --card-border: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --nav-bg: rgba(255, 255, 255, 0.9);
+    --footer-bg: #ffffff;
+  }
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+html.dark body {
+  background-image: 
+    radial-gradient(circle at 20% 10%, rgba(245, 158, 11, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 80% 60%, rgba(59, 130, 246, 0.08) 0%, transparent 45%),
+    radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+html.light body {
+  background-image: none;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+
+/* Energy Flow Animations */
+@keyframes flowDash {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
+}
+.animate-flow {
+  stroke-dasharray: 6, 6;
+  animation: flowDash 1s linear infinite;
+}
+
+/* Alarm Pulses */
+@keyframes pulseRed {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+@keyframes pulseYellow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+}
+
+.alarm-critical-pulse {
+  animation: pulseRed 1.8s infinite;
+}
+.alarm-warning-pulse {
+  animation: pulseYellow 2s infinite;
+}
+
+/* Theme abstraction utility classes */
+.theme-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+html.dark .theme-card {
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+}
+html.light .theme-card {
+  box-shadow: 0 4px 15px -3px rgba(0, 0, 0, 0.05);
+}
+
+.theme-card-hover:hover {
+  transform: translateY(-2px);
+}
+html.dark .theme-card-hover:hover {
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 12px 35px -8px rgba(0, 0, 0, 0.7), 0 0 20px rgba(245, 158, 11, 0.1);
+}
+html.light .theme-card-hover:hover {
+  border-color: rgba(15, 23, 42, 0.3);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.theme-nav {
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--card-border);
+  backdrop-filter: blur(12px);
+}
+
+.theme-footer {
+  background: var(--footer-bg);
+  border-top: 1px solid var(--card-border);
+}
+
+.text-subtle {
+  color: var(--text-secondary);
+}
+.text-muted-custom {
+  color: var(--text-muted);
+}
+
+/* Inner panels / well backgrounds */
+.theme-well {
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+}
+html.dark .theme-well {
+  background: rgba(11, 17, 32, 0.6);
+}
+html.light .theme-well {
+  background: #f8fafc;
+}
