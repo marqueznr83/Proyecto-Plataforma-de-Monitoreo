@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Sparkles, Sliders, Zap, BatteryCharging, Sun, Send, Bell, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function ConfigModal({
@@ -22,9 +22,30 @@ export default function ConfigModal({
 
   // Telegram state
   const [tgToken, setTgToken] = useState(telegramConfig?.botToken || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0");
-  const [tgChatId, setTgChatId] = useState(telegramConfig?.chatId || "5326442");
+  const [tgChatId, setTgChatId] = useState(telegramConfig?.chatId || "-1004366083322");
   const [testStatus, setTestStatus] = useState(null); // null | 'loading' | 'success' | 'error'
   const [testErrorMsg, setTestErrorMsg] = useState("");
+
+  // Sync state when modal opens or configurations change
+  useEffect(() => {
+    if (isOpen) {
+      if (alarmConfig) {
+        setMinVac(alarmConfig.minVac || 195);
+        setMaxVac(alarmConfig.maxVac || 250);
+        setLowBat(alarmConfig.lowBat || 25);
+        setCritBat(alarmConfig.critBat || 15);
+        setNoAC(alarmConfig.noAC || false);
+        setHasSolar(alarmConfig.hasSolar || false);
+        setTestBatSOC(alarmConfig.testBatSOC ?? 50);
+      }
+      if (telegramConfig) {
+        setTgToken(telegramConfig.botToken || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0");
+        setTgChatId(telegramConfig.chatId || "-1004366083322");
+      }
+      setTestStatus(null);
+      setTestErrorMsg("");
+    }
+  }, [isOpen, alarmConfig, telegramConfig]);
 
   if (!isOpen) return null;
 

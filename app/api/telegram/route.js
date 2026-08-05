@@ -7,7 +7,7 @@ export async function POST(request) {
 
     // Fall back to environment variables or hardcoded user credentials if not supplied in request body
     const botToken = bodyToken || process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
-    const chatId = bodyChatId || process.env.TELEGRAM_CHAT_ID || "5326442";
+    const chatId = bodyChatId || process.env.TELEGRAM_CHAT_ID || "-1004366083322";
 
     if (!message) {
       return NextResponse.json(

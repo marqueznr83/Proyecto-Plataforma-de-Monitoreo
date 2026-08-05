@@ -31,7 +31,7 @@ export default function Home() {
   // Telegram bot configuration
   const [telegramConfig, setTelegramConfig] = useState({
     botToken: "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0",
-    chatId: "5326442"
+    chatId: "-1004366083322"
   });
 
   // Load Telegram config from localStorage on mount
