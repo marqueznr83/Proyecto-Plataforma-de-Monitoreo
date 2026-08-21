@@ -3,7 +3,8 @@
 import { Sun, Calendar, TrendingUp, Leaf, Zap, Battery, Home, Cpu, Activity, AlertTriangle } from "lucide-react";
 
 export default function KPICards({ data, hasSolar }) {
-  const isNoAC = data?.vac === 0;
+  const isOffline = data?.isOffline || false;
+  const isNoAC = !isOffline && data?.vac === 0;
   const batSOC = data?.battery?.soc || 50;
   const batVolts = data?.battery?.voltage || 45.5;
   
@@ -15,27 +16,33 @@ export default function KPICards({ data, hasSolar }) {
     cards = [
       {
         title: "Estado Red Eléctrica (AC IN)",
-        value: isNoAC ? "CORTE AC" : `${data?.vac || 230}`,
-        unit: isNoAC ? "" : "V",
-        subtitle: isNoAC ? "⚠️ Alarma: Sin entrada de red eléctrica" : `Frecuencia normal: ${data?.fac || 60} Hz`,
+        value: isOffline ? "N/D" : isNoAC ? "CORTE AC" : `${data?.vac || 230}`,
+        unit: isOffline ? "" : isNoAC ? "" : "V",
+        subtitle: isOffline ? "Módulo fuera de línea" : isNoAC ? "⚠️ Alarma: Sin entrada de red eléctrica" : `Frecuencia normal: ${data?.fac || 60} Hz`,
         icon: Zap,
-        badgeColor: isNoAC 
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : isNoAC 
           ? "bg-red-500/15 border-red-500/50 text-red-600 dark:text-red-400 font-extrabold animate-pulse" 
           : "bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400 font-bold",
-        textColor: isNoAC ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400",
+        textColor: isOffline ? "text-amber-500" : isNoAC ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400",
       },
       {
         title: "Nivel de Batería (SOC)",
-        value: `${batSOC}`,
-        unit: "%",
-        subtitle: `Voltaje BMS: ${batVolts}V (${batSOC < 20 ? "⚠️ Crítico" : "Óptimo"})`,
+        value: isOffline ? "N/D" : `${batSOC}`,
+        unit: isOffline ? "" : "%",
+        subtitle: isOffline ? "Sin telemetría en vivo" : `Voltaje BMS: ${batVolts}V (${batSOC < 20 ? "⚠️ Crítico" : "Óptimo"})`,
         icon: Battery,
-        badgeColor: batSOC <= 20 
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : batSOC <= 20 
           ? "bg-red-500/15 border-red-500/50 text-red-600 dark:text-red-400 font-extrabold animate-pulse"
           : batSOC <= 30
           ? "bg-amber-500/15 border-amber-500/50 text-amber-600 dark:text-amber-400 font-bold"
           : "bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-bold",
-        textColor: batSOC <= 20 
+        textColor: isOffline
+          ? "text-amber-500"
+          : batSOC <= 20 
           ? "text-red-600 dark:text-red-400" 
           : batSOC <= 30 
           ? "text-amber-600 dark:text-amber-400" 
@@ -43,21 +50,25 @@ export default function KPICards({ data, hasSolar }) {
       },
       {
         title: "Consumo del Hogar en Vivo",
-        value: `${data?.houseKW !== undefined ? data.houseKW : 0.85}`,
-        unit: "kW",
-        subtitle: `Potencia demandada (${((data?.houseKW !== undefined ? data.houseKW : 0.85) * 1000).toFixed(0)} W)`,
+        value: isOffline ? "N/D" : `${data?.houseKW !== undefined ? data.houseKW : 0.85}`,
+        unit: isOffline ? "" : "kW",
+        subtitle: isOffline ? "Sin datos de potencia" : `Potencia demandada (${((data?.houseKW !== undefined ? data.houseKW : 0.85) * 1000).toFixed(0)} W)`,
         icon: Home,
-        badgeColor: "bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-400 font-bold",
-        textColor: "text-purple-600 dark:text-purple-400",
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : "bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-400 font-bold",
+        textColor: isOffline ? "text-amber-500" : "text-purple-600 dark:text-purple-400",
       },
       {
         title: "Estado Operativo Inversor",
-        value: `${data?.temperature || 38.5}`,
-        unit: "°C",
-        subtitle: isNoAC ? "Modo Respaldo desde Baterías" : "Modo Normal (Red AC + Cargador)",
+        value: isOffline ? "N/D" : `${data?.temperature || 38.5}`,
+        unit: isOffline ? "" : "°C",
+        subtitle: isOffline ? "Servidor desconectado" : isNoAC ? "Modo Respaldo desde Baterías" : "Modo Normal (Red AC + Cargador)",
         icon: Cpu,
-        badgeColor: "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold",
-        textColor: "text-amber-600 dark:text-amber-400",
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold",
+        textColor: isOffline ? "text-amber-500" : "text-amber-600 dark:text-amber-400",
       }
     ];
   } else {
@@ -65,39 +76,47 @@ export default function KPICards({ data, hasSolar }) {
     cards = [
       {
         title: "Potencia Solar Actual",
-        value: `${data?.ppvKW || 0}`,
-        unit: "kW",
-        subtitle: `${data?.ppv || 0} Watts en vivo desde paneles`,
+        value: isOffline ? "N/D" : `${data?.ppvKW || 0}`,
+        unit: isOffline ? "" : "kW",
+        subtitle: isOffline ? "Sin datos solar" : `${data?.ppv || 0} Watts en vivo desde paneles`,
         icon: Sun,
-        badgeColor: "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold",
-        textColor: "text-amber-600 dark:text-amber-400",
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold",
+        textColor: isOffline ? "text-amber-500" : "text-amber-600 dark:text-amber-400",
       },
       {
         title: "Generación de Hoy",
-        value: `${data?.eToday || 0}`,
-        unit: "kWh",
-        subtitle: "Energía solar capturada hoy",
+        value: isOffline ? "N/D" : `${data?.eToday || 0}`,
+        unit: isOffline ? "" : "kWh",
+        subtitle: isOffline ? "Sin datos de energía" : "Energía solar capturada hoy",
         icon: Calendar,
-        badgeColor: "bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-bold",
-        textColor: "text-emerald-600 dark:text-emerald-400",
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : "bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-bold",
+        textColor: isOffline ? "text-amber-500" : "text-emerald-600 dark:text-emerald-400",
       },
       {
         title: "Producción del Mes",
-        value: `${data?.eMonth || 684.2}`,
-        unit: "kWh",
-        subtitle: "Total acumulado mensual",
+        value: isOffline ? "N/D" : `${data?.eMonth || 684.2}`,
+        unit: isOffline ? "" : "kWh",
+        subtitle: isOffline ? "Sin datos acumulados" : "Total acumulado mensual",
         icon: TrendingUp,
-        badgeColor: "bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400 font-bold",
-        textColor: "text-blue-600 dark:text-blue-400",
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : "bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400 font-bold",
+        textColor: isOffline ? "text-amber-500" : "text-blue-600 dark:text-blue-400",
       },
       {
         title: "Impacto Ecológico",
-        value: `${data?.co2SavedKg || 0}`,
-        unit: "kg CO₂",
-        subtitle: `Equivalente a 🌲 ${data?.treesSaved || 0} árboles`,
+        value: isOffline ? "N/D" : `${data?.co2SavedKg || 0}`,
+        unit: isOffline ? "" : "kg CO₂",
+        subtitle: isOffline ? "Sin datos de impacto" : `Equivalente a 🌲 ${data?.treesSaved || 0} árboles`,
         icon: Leaf,
-        badgeColor: "bg-teal-500/15 border-teal-500/40 text-teal-600 dark:text-teal-400 font-bold",
-        textColor: "text-teal-600 dark:text-teal-400",
+        badgeColor: isOffline
+          ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
+          : "bg-teal-500/15 border-teal-500/40 text-teal-600 dark:text-teal-400 font-bold",
+        textColor: isOffline ? "text-amber-500" : "text-teal-600 dark:text-teal-400",
       }
     ];
   }

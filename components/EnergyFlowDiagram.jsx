@@ -3,17 +3,26 @@
 import { Sun, Cpu, Home, Zap, BatteryCharging, Activity, ShieldAlert, CheckCircle2, ArrowRight } from "lucide-react";
 
 export default function EnergyFlowDiagram({ data, hasSolar = false }) {
-  const solarKW = hasSolar ? (data?.ppvKW !== undefined ? data.ppvKW : 0) : 0;
-  const pacKW = data?.pacKW !== undefined ? data.pacKW : (data?.houseKW !== undefined ? data.houseKW : 0.85);
-  const houseKW = data?.houseKW !== undefined ? data.houseKW : Number(((data?.houseLoad !== undefined ? data.houseLoad : 850) / 1000).toFixed(2));
-  const gridKW = Number(((data?.gridPower !== undefined ? data.gridPower : (hasSolar ? 0 : -houseKW * 1000)) / 1000).toFixed(2));
-  const batterySOC = data?.battery?.soc !== undefined ? data.battery.soc : (data?.batterySOC || 50);
-  const batteryVoltage = data?.battery?.voltage !== undefined ? data.battery.voltage : (data?.batteryVoltage || 48.0);
-  const batteryKW = Number(((data?.battery?.power !== undefined ? data.battery.power : (data?.batteryPower || 0)) / 1000).toFixed(2));
+  const isOffline = data?.isOffline || false;
+  const solarKW = isOffline ? "N/D" : (hasSolar ? (data?.ppvKW !== undefined ? data.ppvKW : 0) : 0);
+  const pacKW = isOffline ? "N/D" : (data?.pacKW !== undefined ? data.pacKW : (data?.houseKW !== undefined ? data.houseKW : 0.85));
+  const houseKW = isOffline ? "N/D" : (data?.houseKW !== undefined ? data.houseKW : Number(((data?.houseLoad !== undefined ? data.houseLoad : 850) / 1000).toFixed(2)));
+  const gridKW = isOffline ? 0 : Number(((data?.gridPower !== undefined ? data.gridPower : (hasSolar ? 0 : -houseKW * 1000)) / 1000).toFixed(2));
+  const batterySOC = isOffline ? null : (data?.battery?.soc !== undefined ? data.battery.soc : (data?.batterySOC || 50));
+  const batteryVoltage = isOffline ? null : (data?.battery?.voltage !== undefined ? data.battery.voltage : (data?.batteryVoltage || 48.0));
+  const batteryKW = isOffline ? 0 : Number(((data?.battery?.power !== undefined ? data.battery.power : (data?.batteryPower || 0)) / 1000).toFixed(2));
 
-  const isNoAC = data?.vac === 0 || data?.gridAC?.vac === 0;
-  const isBatCritical = batterySOC <= 15;
-  const isBatLow = batterySOC > 15 && batterySOC <= 25;
+  const isNoAC = !isOffline && (data?.vac === 0 || data?.gridAC?.vac === 0);
+  const isBatCritical = !isOffline && batterySOC !== null && batterySOC <= 15;
+  const isBatLow = !isOffline && batterySOC !== null && batterySOC > 15 && batterySOC <= 25;
+
+  const batClass = `h-full rounded-full transition-all ${
+    isBatCritical
+      ? "bg-red-600 animate-pulse"
+      : isBatLow
+      ? "bg-amber-500 animate-pulse"
+      : "bg-emerald-500"
+  }`;
 
   return (
     <div className="theme-card p-5 md:p-7 relative overflow-hidden shadow-lg">
@@ -35,7 +44,12 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
         </div>
         
         <div className="flex items-center gap-2 font-mono text-xs">
-          {isNoAC ? (
+          {isOffline ? (
+            <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/50 font-black animate-pulse flex items-center gap-1.5 shadow-sm">
+              <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+              <span>⚠️ MÓDULO WI-FI DESCONECTADO</span>
+            </span>
+          ) : isNoAC ? (
             <span className="px-3 py-1 rounded-full bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/50 font-black animate-pulse flex items-center gap-1.5 shadow-sm">
               <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
               <span>🔴 ALARMA: CORTE AC (MODO RESPALDO)</span>
@@ -120,21 +134,21 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
           
           {/* 1. GRID INPUT (RED ELÉCTRICA) */}
           <div className={`theme-well p-5 flex flex-col items-center text-center border-2 transition-all ${
-            isNoAC ? "border-red-500/80 bg-red-500/10 alarm-critical-pulse" : "border-blue-500/40"
+            isOffline ? "border-amber-500/40" : isNoAC ? "border-red-500/80 bg-red-500/10 alarm-critical-pulse" : "border-blue-500/40"
           }`}>
             <div className={`p-3.5 rounded-2xl mb-2.5 border shadow-sm ${
-              isNoAC ? "bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/50" : "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/40"
+              isOffline ? "bg-amber-500/15 text-amber-500 border-amber-500/30" : isNoAC ? "bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/50" : "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/40"
             }`}>
               <Zap className="w-8 h-8" />
             </div>
             <span className="text-xs font-extrabold uppercase tracking-wider text-subtle">
               Entrada Red Eléctrica
             </span>
-            <div className={`text-2xl font-black my-1 font-mono ${isNoAC ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>
-              {isNoAC ? "0 V" : `${data?.vac || 230} V`} <span className="text-xs font-bold text-subtle">{isNoAC ? "(CORTE AC)" : `• ${data?.fac || 60}Hz`}</span>
+            <div className={`text-2xl font-black my-1 font-mono ${isOffline ? "text-amber-500" : isNoAC ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>
+              {isOffline ? "N/D" : isNoAC ? "0 V" : `${data?.vac || 230} V`} {!isOffline && <span className="text-xs font-bold text-subtle">{isNoAC ? "(CORTE AC)" : `• ${data?.fac || 60}Hz`}</span>}
             </div>
-            <div className={`text-[11px] font-mono font-bold pt-2 border-t border-slate-700/30 w-full ${isNoAC ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-              {isNoAC ? "🔴 SIN SUBMINISTRO AC (ALERTA)" : "⚡ Subministro AC Activo"}
+            <div className={`text-[11px] font-mono font-bold pt-2 border-t border-slate-700/30 w-full ${isOffline ? "text-amber-600 dark:text-amber-400" : isNoAC ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+              {isOffline ? "⚠️ CONEXIÓN PERDIDA" : isNoAC ? "🔴 SIN SUMINISTRO AC (ALERTA)" : "⚡ Suministro AC Activo"}
             </div>
           </div>
 
@@ -201,13 +215,17 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
         
         {/* RED AC STATUS BOX */}
         <div className={`theme-well p-4 flex items-center justify-between border-2 transition-all shadow-sm ${
-          isNoAC
+          isOffline
+            ? "border-amber-500/40"
+            : isNoAC
             ? "border-red-500/70 bg-red-500/10 alarm-critical-pulse"
             : "border-blue-500/40"
         }`}>
           <div className="flex items-center gap-3.5">
             <div className={`p-3 rounded-xl border shrink-0 ${
-              isNoAC
+              isOffline
+                ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400"
+                : isNoAC
                 ? "bg-red-500/20 border-red-500/50 text-red-600 dark:text-red-400"
                 : "bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400"
             }`}>
@@ -215,24 +233,26 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
             </div>
             <div>
               <span className="text-sm font-extrabold block">Estado Red AC (Grid In)</span>
-              <span className={`text-xs font-bold ${isNoAC ? "text-red-600 dark:text-red-400 animate-pulse" : "text-blue-600 dark:text-blue-400"}`}>
-                {isNoAC ? "🔴 ALARMA: SIN VOLTAJE AC DE ENTRADA" : "🟢 Subministro Eléctrico Estable"}
+              <span className={`text-xs font-bold ${isOffline ? "text-amber-500" : isNoAC ? "text-red-600 dark:text-red-400 animate-pulse" : "text-blue-600 dark:text-blue-400"}`}>
+                {isOffline ? "⚠️ CONEXIÓN PERDIDA CON SERVIDOR" : isNoAC ? "🔴 ALARMA: SIN VOLTAJE AC DE ENTRADA" : "🟢 Suministro Eléctrico Estable"}
               </span>
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className={`text-lg sm:text-xl font-mono font-black ${isNoAC ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>
-              {isNoAC ? "0 V (Falta AC)" : `${data?.vac || 230} V`}
+            <div className={`text-lg sm:text-xl font-mono font-black ${isOffline ? "text-amber-500" : isNoAC ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>
+              {isOffline ? "N/D" : isNoAC ? "0 V (Falta AC)" : `${data?.vac || 230} V`}
             </div>
             <span className="text-xs font-mono font-semibold text-subtle block">
-              {isNoAC ? "Modo Inversor UPS" : `Frecuencia: ${data?.fac || 60} Hz`}
+              {isOffline ? "Sin Telemetría" : isNoAC ? "Modo Inversor UPS" : `Frecuencia: ${data?.fac || 60} Hz`}
             </span>
           </div>
         </div>
 
         {/* BATTERY BMS STATUS WITH CRITICAL & LOW ALARM HIGHLIGHTS */}
         <div className={`theme-well p-4 flex items-center justify-between border-2 transition-all shadow-sm ${
-          isBatCritical
+          isOffline
+            ? "border-amber-500/40"
+            : isBatCritical
             ? "border-red-500/80 bg-red-500/15 alarm-critical-pulse"
             : isBatLow
             ? "border-amber-500/80 bg-amber-500/15 alarm-warning-pulse"
@@ -240,7 +260,9 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
         }`}>
           <div className="flex items-center gap-3.5">
             <div className={`p-3 rounded-xl border shrink-0 ${
-              isBatCritical
+              isOffline
+                ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400"
+                : isBatCritical
                 ? "bg-red-500/20 border-red-500/50 text-red-600 dark:text-red-400"
                 : isBatLow
                 ? "bg-amber-500/20 border-amber-500/50 text-amber-600 dark:text-amber-400"
@@ -251,6 +273,11 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-extrabold">Batería Híbrida (BMS)</span>
+                {isOffline && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded bg-amber-500 text-slate-950">
+                    SIN CONEXIÓN
+                  </span>
+                )}
                 {isBatCritical && (
                   <span className="text-[10px] font-black px-2 py-0.5 rounded bg-red-600 text-white animate-pulse">
                     ⚠️ ALARMA CRÍTICA (ROJO)
@@ -263,36 +290,30 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
                 )}
               </div>
               <span className={`text-xs font-bold block mt-0.5 ${
-                isBatCritical ? "text-red-600 dark:text-red-400 font-extrabold" : isBatLow ? "text-amber-600 dark:text-amber-400 font-extrabold" : "text-emerald-600 dark:text-emerald-400"
+                isOffline ? "text-amber-500" : isBatCritical ? "text-red-600 dark:text-red-400 font-extrabold" : isBatLow ? "text-amber-600 dark:text-amber-400 font-extrabold" : "text-emerald-600 dark:text-emerald-400"
               }`}>
-                {batteryKW > 0 ? `⚡ Cargando (+${batteryKW} kW)` : batteryKW < 0 ? `⚡ Descargando (${batteryKW} kW)` : "🔋 Nivel Óptimo en Reposo"}
+                {isOffline ? "Sin Datos de Carga/Descarga" : batteryKW > 0 ? `⚡ Cargando (+${batteryKW} kW)` : batteryKW < 0 ? `⚡ Descargando (${batteryKW} kW)` : "🔋 Nivel Óptimo en Reposo"}
               </span>
             </div>
           </div>
           
           <div className="text-right shrink-0">
             <div className={`text-lg sm:text-xl font-mono font-black ${
-              isBatCritical ? "text-red-600 dark:text-red-400" : isBatLow ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
+              isOffline ? "text-amber-500" : isBatCritical ? "text-red-600 dark:text-red-400" : isBatLow ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
             }`}>
-              {batterySOC}% <span className="text-xs font-bold text-subtle">({batteryVoltage}V)</span>
+              {isOffline ? "N/D" : `${batterySOC}%`} {!isOffline && <span className="text-xs font-bold text-subtle">({batteryVoltage}V)</span>}
             </div>
-            <div className="w-28 h-2.5 bg-slate-300 dark:bg-slate-800 rounded-full overflow-hidden mt-1.5 border border-slate-400/30 dark:border-slate-700 inline-block">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  isBatCritical
-                    ? "bg-red-600 animate-pulse"
-                    : isBatLow
-                    ? "bg-amber-500 animate-pulse"
-                    : "bg-emerald-500"
-                }`}
-                style={{ width: `${Math.min(100, Math.max(0, batterySOC))}%` }}
-              />
-            </div>
+            {!isOffline && (
+              <div className="w-28 h-2.5 bg-slate-300 dark:bg-slate-800 rounded-full overflow-hidden mt-1.5 border border-slate-400/30 dark:border-slate-700 inline-block">
+                <div
+                  className={batClass}
+                  style={{ width: `${Math.min(100, Math.max(0, batterySOC))}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
-
       </div>
-
     </div>
   );
 }

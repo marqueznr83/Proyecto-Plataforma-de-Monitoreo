@@ -95,6 +95,7 @@ const getAlertTitleById = (alertId) => {
 
 async function handleBackendNotifications(data) {
   const currentAlerts = data.alerts || [];
+  const isOffline = data.isOffline || false;
   const newNotifiedIds = [...globalNotifiedAlerts];
   let hasChanges = false;
 
@@ -111,7 +112,14 @@ async function handleBackendNotifications(data) {
     if (!globalNotifiedAlerts.includes(alert.id)) {
       let text = "";
       
-      if (alert.id === "ac_outage") {
+      if (alert.id === "wifi_offline") {
+        text = `⚠️ <b>MÓDULO WI-FI FUERA DE LÍNEA – Planta Nelson Márquez</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `<blockquote><b>Detalle:</b> Se ha perdido la conexión con los servidores de Growatt.\n` +
+               `<b>Hora:</b> ${new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" })}</blockquote>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `El monitoreo en vivo está pausado hasta restablecer la señal.`;
+      } else if (alert.id === "ac_outage") {
         if (!acOutageStartTime) {
           acOutageStartTime = Date.now();
         }
@@ -155,9 +163,30 @@ async function handleBackendNotifications(data) {
     }
   }
 
-  // 2. Notify RESOLVED alarms
-  for (const alertId of globalNotifiedAlerts) {
-    const isStillActive = currentAlerts.some((a) => a.id === alertId);
+  // 2. Notify RESOLVED alarms (Only when online, except wifi_offline)
+  if (!isOffline) {
+    for (const alertId of globalNotifiedAlerts) {
+      if (alertId === "wifi_offline") {
+        const isStillActive = currentAlerts.some((a) => a.id === alertId);
+        if (!isStillActive) {
+          const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+          const text = `🟢 <b>MÓDULO RECONECTADO – Planta Nelson Márquez</b>\n` +
+                       `━━━━━━━━━━━━━━━━━━\n` +
+                       `<blockquote><b>Estado:</b> Conexión restablecida con el inversor.\n` +
+                       `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
+                       `━━━━━━━━━━━━━━━━━━\n` +
+                       `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
+          await sendTelegramMessage(text);
+          const index = newNotifiedIds.indexOf(alertId);
+          if (index > -1) {
+            newNotifiedIds.splice(index, 1);
+          }
+          hasChanges = true;
+        }
+        continue;
+      }
+
+      const isStillActive = currentAlerts.some((a) => a.id === alertId);
     if (!isStillActive) {
       let text = "";
       
@@ -223,6 +252,7 @@ async function handleBackendNotifications(data) {
       hasChanges = true;
     }
   }
+  }
 
   if (hasChanges) {
     globalNotifiedAlerts = newNotifiedIds;
@@ -271,30 +301,43 @@ export async function GET(request) {
         });
       }
     } catch (apiError) {
-      console.warn("Growatt OpenAPI fetch failed or permission denied, using smart simulator. Error details:", apiError);
+      console.warn("Growatt OpenAPI fetch failed or permission denied, using offline state. Error details:", apiError);
       
-      // Fallback with exact API error info so the user knows what happened
-      const simulatedData = generateLiveTelemetry(token, config);
-      
-      // Inject API connection error context so the UI can display a warning banner
-      simulatedData.alerts.push({
-        id: "api_connection_warning",
-        severity: "warning",
-        title: "⚠️ CONEXIÓN API GROWATT SIMULADA",
-        message: `No se pudo conectar a los servidores de Growatt (${apiError?.error_msg || apiError?.message || "Código 10011: Permiso denegado/Token inactivo"}). Mostrando datos simulados calibrados de tu sistema de respaldo.`,
-        code: `API_${apiError?.error_code || "CONN_ERR"}`,
-        timestamp: new Date().toISOString()
-      });
-      simulatedData.status = "WARNING (SIMULADO)";
-      simulatedData.hasWarningAlert = true;
+      const offlineData = {
+        plantName: "Residencial Sr. Nelson",
+        inverterModel: "Growatt Inverter UPS",
+        serialNumber: "AOE9CJC058",
+        status: "MÓDULO DESCONECTADO",
+        statusMessage: "Conexión con el inversor perdida",
+        isOffline: true,
+        alerts: [
+          {
+            id: "wifi_offline",
+            severity: "warning",
+            title: "⚠️ MÓDULO WI-FI FUERA DE LÍNEA",
+            message: `No se pudo conectar a los servidores de Growatt (${apiError?.error_msg || apiError?.message || "Código 10012: Bloqueo por acceso frecuente"}).`,
+            code: "API_CONN_ERR",
+            timestamp: new Date().toISOString()
+          }
+        ],
+        batterySOC: null,
+        batteryVoltage: null,
+        houseLoad: null,
+        vac: null,
+        fac: null,
+        pac: null,
+        temperature: null,
+        hasWarningAlert: true,
+        hasCriticalAlert: false
+      };
 
-      // Trigger server-side alerts check & telegram notifier
-      await handleBackendNotifications(simulatedData);
+      // Trigger server-side alerts check & telegram notifier ONLY for wifi_offline!
+      await handleBackendNotifications(offlineData);
 
       return NextResponse.json({
-        source: "growatt_openapi_fallback",
+        source: "growatt_openapi_offline",
         success: true,
-        data: simulatedData
+        data: offlineData
       });
     }
   }
