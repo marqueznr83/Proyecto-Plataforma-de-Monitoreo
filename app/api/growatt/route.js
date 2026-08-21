@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 
 export const dynamic = "force-dynamic";
 
@@ -6,31 +8,77 @@ export const dynamic = "force-dynamic";
 let globalNotifiedAlerts = [];
 let acOutageStartTime = null;
 
+const chatIdsFilePath = path.join(process.cwd(), "chat_ids.json");
+
+function getRegisteredChatIds() {
+  let ids = [];
+  
+  // 1. Read from environment variable first (comma-separated list)
+  const envChatId = process.env.TELEGRAM_CHAT_ID;
+  if (envChatId) {
+    ids = envChatId.split(",").map(s => s.trim()).filter(Boolean);
+  }
+  
+  // 2. Load from local file if exists (for local testing persistent storage)
+  try {
+    if (fs.existsSync(chatIdsFilePath)) {
+      const fileIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
+      if (Array.isArray(fileIds)) {
+        for (const fileId of fileIds) {
+          if (!ids.includes(fileId)) {
+            ids.push(fileId);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading chat_ids.json:", e.message);
+  }
+
+  // 3. Sync with global Vercel cache (best effort)
+  if (global.vercelChatIds && Array.isArray(global.vercelChatIds)) {
+    for (const id of global.vercelChatIds) {
+      if (!ids.includes(id)) {
+        ids.push(id);
+      }
+    }
+  }
+
+  // 4. Default fallback if empty (original group ID)
+  if (ids.length === 0) {
+    return ["-1004366083322"];
+  }
+  
+  return ids;
+}
+
 async function sendTelegramMessage(text) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
-  const chatId = process.env.TELEGRAM_CHAT_ID || "-1004366083322";
+  const chatIds = getRegisteredChatIds();
   
-  if (!botToken || !chatId) return;
+  if (!botToken || chatIds.length === 0) return;
 
-  try {
-    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: text,
-        parse_mode: "HTML"
-      })
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      console.error("Failed to send Telegram message:", json);
+  for (const chatId of chatIds) {
+    try {
+      const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text,
+          parse_mode: "HTML"
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        console.error(`Failed to send Telegram message to ${chatId}:`, json);
+      }
+    } catch (err) {
+      console.error(`Error sending Telegram message to ${chatId}:`, err);
     }
-  } catch (err) {
-    console.error("Error sending Telegram message:", err);
   }
 }
 
@@ -186,6 +234,15 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const token = searchParams.get("token") || process.env.GROWATT_API_TOKEN || "75433vd880684dfp20nav03t8zb10xp1";
   const isDemoMode = searchParams.get("demo") === "true";
+  
+  // Set up Telegram webhook dynamically when hosted on Vercel
+  const host = request.headers.get("host");
+  if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
+    const webhookUrl = `https://${host}/api/telegram`;
+    fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`)
+      .catch((err) => console.error("Error setting dynamic Telegram webhook:", err.message));
+  }
   
   // Custom Alarm & System Configuration from query params
   const config = {
