@@ -37,10 +37,10 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
   // Reset dismissed alert list if the backend reports no alerts (so future alarms of the same type can trigger again)
   const alerts = data?.alerts || [];
   useEffect(() => {
-    if (alerts.length === 0) {
+    if (alerts.length === 0 && dismissedAlerts.length > 0) {
       setDismissedAlerts([]);
     }
-  }, [alerts]);
+  }, [alerts.length, dismissedAlerts.length]);
 
   const handleManualRefresh = () => {
     setCountdown(300);
