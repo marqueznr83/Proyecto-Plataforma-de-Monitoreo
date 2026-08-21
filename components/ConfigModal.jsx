@@ -185,69 +185,7 @@ export default function ConfigModal({
             </div>
           </div>
 
-          {/* 2. Battery SOC & Voltage Thresholds */}
-          <div className="p-4.5 rounded-xl theme-well border border-slate-700/40 dark:border-slate-800 space-y-3.5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <BatteryCharging className="w-5 h-5 text-purple-500" />
-                <span className="text-xs font-extrabold uppercase tracking-wider">Alarmas de Batería (BMS Comunicado)</span>
-              </div>
-              <span className="text-xs font-mono text-purple-600 dark:text-purple-400 font-black bg-purple-500/15 px-2.5 py-1 rounded-md">
-                Simulación SOC actual: {testBatSOC}%
-              </span>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="block text-[11px] font-bold text-amber-600 dark:text-amber-400 mb-1">
-                  Batería Baja (Aviso 🟡):
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    value={lowBat}
-                    onChange={(e) => setLowBat(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-amber-500/40 text-amber-600 dark:text-amber-400 font-mono font-extrabold"
-                  />
-                  <span className="font-bold text-subtle">%</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-red-600 dark:text-red-400 mb-1">
-                  Batería Crítica (Alarma 🔴):
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    value={critBat}
-                    onChange={(e) => setCritBat(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-red-500/40 text-red-600 dark:text-red-400 font-mono font-extrabold"
-                  />
-                  <span className="font-bold text-subtle">%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Slider for testing battery levels */}
-            <div>
-              <label className="block text-xs font-extrabold text-subtle mb-1.5">
-                Deslizador de Prueba (Mover para probar colores Rojo 🔴 y Amarillo 🟡):
-              </label>
-              <input
-                type="range"
-                min="5"
-                max="100"
-                value={testBatSOC}
-                onChange={(e) => setTestBatSOC(Number(e.target.value))}
-                className="w-full accent-amber-500 cursor-pointer h-2 bg-slate-300 dark:bg-slate-700 rounded-lg"
-              />
-              <div className="flex justify-between text-[11px] font-mono font-bold mt-1">
-                <span className="text-red-600 dark:text-red-400">≤ 15% (CRÍTICA 🔴)</span>
-                <span className="text-amber-600 dark:text-amber-400">16-25% (BAJA 🟡)</span>
-                <span className="text-emerald-600 dark:text-emerald-400">&gt; 25% (ÓPTIMO 🟢)</span>
-              </div>
-            </div>
-          </div>
 
 
 

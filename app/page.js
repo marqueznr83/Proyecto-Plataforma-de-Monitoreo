@@ -21,8 +21,8 @@ export default function Home() {
   const [alarmConfig, setAlarmConfig] = useState({
     minVac: 195,
     maxVac: 250,
-    lowBat: 25,
-    critBat: 15,
+    lowBat: 60,
+    critBat: 30,
     noAC: false,
     hasSolar: false, // Inversor sin paneles solares por defecto (según especificación)
     testBatSOC: 50

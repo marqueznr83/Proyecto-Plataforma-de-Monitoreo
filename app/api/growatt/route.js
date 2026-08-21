@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 // Keep cache in memory for serverless container warm cycles
 let globalNotifiedAlerts = [];
+let acOutageStartTime = null;
 
 async function sendTelegramMessage(text) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
@@ -44,25 +45,61 @@ const getAlertTitleById = (alertId) => {
   }
 };
 
-async function handleBackendNotifications(currentAlerts) {
+async function handleBackendNotifications(data) {
+  const currentAlerts = data.alerts || [];
   const newNotifiedIds = [...globalNotifiedAlerts];
   let hasChanges = false;
+
+  const plantName = data.plantName || "Planta Nelson Márquez";
+  const batterySOC = data.batterySOC || 50;
+  const batteryVoltage = data.batteryVoltage || 48.0;
+  const houseLoadWatts = data.houseLoad !== undefined ? Math.round(data.houseLoad) : 800;
+  const vac = data.vac !== undefined ? data.vac : 230;
 
   // 1. Notify NEW alarms
   for (const alert of currentAlerts) {
     if (alert.id === "api_connection_warning") continue;
 
     if (!globalNotifiedAlerts.includes(alert.id)) {
-      const severityTitle = alert.severity === "critical" ? "🔴 <b>ALERTA CRÍTICA DE INVERSOR</b>" : "⚠️ <b>ADVERTENCIA DE SISTEMA</b>";
-      const localTimeStr = new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
-      const text = `${severityTitle}\n` +
-                   `━━━━━━━━━━━━━━━━━━\n` +
-                   `<blockquote><b>Evento:</b> ${alert.title}\n` +
-                   `<b>Detalle:</b> ${alert.message}\n` +
-                   `<b>Código:</b> <code>${alert.code}</code>\n` +
-                   `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
-                   `━━━━━━━━━━━━━━━━━━\n` +
-                   `🔌 <i>Monitoreo Residencial Nelson Márquez</i>`;
+      let text = "";
+      
+      if (alert.id === "ac_outage") {
+        if (!acOutageStartTime) {
+          acOutageStartTime = Date.now();
+        }
+        text = `🚨 <b>CORTE DE LUZ – Planta Nelson Márquez</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `• Red Comercial: Sin suministro (0 V)\n` +
+               `• Batería: ${batterySOC}% (${batteryVoltage} V)\n` +
+               `• Consumo Casa: ${houseLoadWatts} W\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `Respaldo por batería activo.`;
+      } else if (alert.id === "bat_low") {
+        text = `🟠 <b>BATERÍA BAJA (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `• Voltaje: ${batteryVoltage} V\n` +
+               `• Consumo: ${houseLoadWatts} W\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `Se sugiere moderar el consumo.`;
+      } else if (alert.id === "bat_critical") {
+        text = `🔴 <b>BATERÍA CRÍTICA (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `• Voltaje: ${batteryVoltage} V\n` +
+               `• Consumo: ${houseLoadWatts} W\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `¡Alerta! Nivel de batería críticamente bajo.`;
+      } else {
+        const severityTitle = alert.severity === "critical" ? "🔴 <b>ALERTA CRÍTICA DE INVERSOR</b>" : "⚠️ <b>ADVERTENCIA DE SISTEMA</b>";
+        const localTimeStr = new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+        text = `${severityTitle}\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `<blockquote><b>Evento:</b> ${alert.title}\n` +
+               `<b>Detalle:</b> ${alert.message}\n` +
+               `<b>Código:</b> <code>${alert.code}</code>\n` +
+               `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
+      }
       
       await sendTelegramMessage(text);
       newNotifiedIds.push(alert.id);
@@ -74,15 +111,33 @@ async function handleBackendNotifications(currentAlerts) {
   for (const alertId of globalNotifiedAlerts) {
     const isStillActive = currentAlerts.some((a) => a.id === alertId);
     if (!isStillActive) {
-      const title = getAlertTitleById(alertId);
-      const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
-      const text = `🟢 <b>SISTEMA RESTABLECIDO</b>\n` +
-                   `━━━━━━━━━━━━━━━━━━\n` +
-                   `<blockquote><b>Solucionado:</b> ${title}\n` +
-                   `<b>Estado:</b> Operación normal y segura.\n` +
-                   `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
-                   `━━━━━━━━━━━━━━━━━━\n` +
-                   `🔌 <i>Monitoreo Residencial Nelson Márquez</i>`;
+      let text = "";
+      
+      if (alertId === "ac_outage") {
+        let durationStr = "Desconocida";
+        if (acOutageStartTime) {
+          const diffMs = Date.now() - acOutageStartTime;
+          const diffMin = Math.round(diffMs / 60000);
+          durationStr = diffMin > 0 ? `${diffMin} min` : "< 1 min";
+          acOutageStartTime = null;
+        }
+        text = `✅ <b>LUZ RESTABLECIDA – Planta Nelson Márquez</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `• Red Comercial: ${vac} V\n` +
+               `• Duración del Corte: ${durationStr}\n` +
+               `• Batería: ${batterySOC}% (${batteryVoltage} V)\n` +
+               `━━━━━━━━━━━━━━━━━━`;
+      } else {
+        const title = getAlertTitleById(alertId);
+        const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+        text = `🟢 <b>SISTEMA RESTABLECIDO</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `<blockquote><b>Solucionado:</b> ${title}\n` +
+               `<b>Estado:</b> Operación normal y segura.\n` +
+               `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
+      }
       
       await sendTelegramMessage(text);
       const index = newNotifiedIds.indexOf(alertId);
@@ -111,8 +166,8 @@ export async function GET(request) {
     simulateACOutage: searchParams.get("noAC") === "true",
     minGridVac: Number(searchParams.get("minVac")) || 195,
     maxGridVac: Number(searchParams.get("maxVac")) || 250,
-    lowBatSOC: Number(searchParams.get("lowBat")) || 25,
-    criticalBatSOC: Number(searchParams.get("critBat")) || 15,
+    lowBatSOC: Number(searchParams.get("lowBat")) || 60,
+    criticalBatSOC: Number(searchParams.get("critBat")) || 30,
     customBatSOC: searchParams.get("batSOC") !== null ? Number(searchParams.get("batSOC")) : null
   };
 
@@ -122,7 +177,7 @@ export async function GET(request) {
       const realTelemetry = await getRealGrowattTelemetry(token, config);
       if (realTelemetry) {
         // Trigger server-side alerts check & telegram notifier
-        await handleBackendNotifications(realTelemetry.alerts);
+        await handleBackendNotifications(realTelemetry);
         
         return NextResponse.json({
           source: "growatt_openapi_realtime",
@@ -149,7 +204,7 @@ export async function GET(request) {
       simulatedData.hasWarningAlert = true;
 
       // Trigger server-side alerts check & telegram notifier
-      await handleBackendNotifications(simulatedData.alerts);
+      await handleBackendNotifications(simulatedData);
 
       return NextResponse.json({
         source: "growatt_openapi_fallback",
@@ -162,7 +217,7 @@ export async function GET(request) {
   // Default to live high-fidelity simulation
   const liveTelemetry = generateLiveTelemetry(token, config);
   // Trigger server-side alerts check & telegram notifier
-  await handleBackendNotifications(liveTelemetry.alerts);
+  await handleBackendNotifications(liveTelemetry);
   
   return NextResponse.json({
     source: "telemetry_engine_v3",
