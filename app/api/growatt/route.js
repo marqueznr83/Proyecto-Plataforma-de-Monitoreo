@@ -118,7 +118,13 @@ async function handleBackendNotifications(data) {
         if (acOutageStartTime) {
           const diffMs = Date.now() - acOutageStartTime;
           const diffMin = Math.round(diffMs / 60000);
-          durationStr = diffMin > 0 ? `${diffMin} min` : "< 1 min";
+          if (diffMin >= 60) {
+            const hours = Math.floor(diffMin / 60);
+            const mins = diffMin % 60;
+            durationStr = `${hours}h ${mins} min`;
+          } else {
+            durationStr = diffMin > 0 ? `${diffMin} min` : "< 1 min";
+          }
           acOutageStartTime = null;
         }
         text = `✅ <b>LUZ RESTABLECIDA – Planta Nelson Márquez</b>\n` +
@@ -127,6 +133,28 @@ async function handleBackendNotifications(data) {
                `• Duración del Corte: ${durationStr}\n` +
                `• Batería: ${batterySOC}% (${batteryVoltage} V)\n` +
                `━━━━━━━━━━━━━━━━━━`;
+      } else if (alertId === "bat_low") {
+        // Resolve silently (no Telegram alert sent) - we only notify at 80%
+        const index = newNotifiedIds.indexOf(alertId);
+        if (index > -1) {
+          newNotifiedIds.splice(index, 1);
+        }
+        hasChanges = true;
+        continue;
+      } else if (alertId === "bat_not_optimal") {
+        text = `🟢 <b>BATERÍA EN NIVEL ÓPTIMO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `• Voltaje: ${batteryVoltage} V\n` +
+               `• Consumo: ${houseLoadWatts} W\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `La batería ha cargado por encima del nivel óptimo del 80%.`;
+      } else if (alertId === "bat_critical") {
+        text = `🔋 <b>BATERÍA SUPERÓ EL LÍMITE CRÍTICO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `• Voltaje: ${batteryVoltage} V\n` +
+               `• Consumo: ${houseLoadWatts} W\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `La batería ha subido por encima del umbral crítico del 30%.`;
       } else {
         const title = getAlertTitleById(alertId);
         const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
@@ -435,6 +463,17 @@ async function getRealGrowattTelemetry(token, config) {
     });
   }
 
+  if (batterySOC < 80) {
+    alerts.push({
+      id: "bat_not_optimal",
+      severity: "info",
+      title: "Batería por debajo del nivel óptimo (80%)",
+      message: `Carga de batería por debajo del 80%: ${batterySOC}% (${batteryVoltage}V).`,
+      code: "I12_BAT_NOT_OPTIMAL",
+      timestamp: now.toISOString()
+    });
+  }
+
   const hasCritical = alerts.some((a) => a.severity === "critical");
   const hasWarning = alerts.some((a) => a.severity === "warning");
 
@@ -619,6 +658,17 @@ function generateLiveTelemetry(token, config) {
       title: "⚠️ BATERÍA EN NIVEL BAJO (AMARILLO)",
       message: `Estado de carga de batería en nivel bajo: ${batterySOC}% (${batteryVoltage}V). Límite de advertencia: ${config.lowBatSOC}%.`,
       code: "W11_BAT_LOW",
+      timestamp: now.toISOString()
+    });
+  }
+
+  if (batterySOC < 80) {
+    alerts.push({
+      id: "bat_not_optimal",
+      severity: "info",
+      title: "Batería por debajo del nivel óptimo (80%)",
+      message: `Carga de batería por debajo del 80%: ${batterySOC}% (${batteryVoltage}V).`,
+      code: "I12_BAT_NOT_OPTIMAL",
       timestamp: now.toISOString()
     });
   }

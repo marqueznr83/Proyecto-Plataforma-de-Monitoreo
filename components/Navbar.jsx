@@ -55,8 +55,8 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
     setDismissedAlerts(alerts.map((a) => a.id));
   };
 
-  // Filter visible alerts (excluding those manually dismissed by user)
-  const visibleAlerts = alerts.filter((a) => !dismissedAlerts.includes(a.id));
+  // Filter visible alerts (excluding those manually dismissed by user and internal optimal battery tracker)
+  const visibleAlerts = alerts.filter((a) => !dismissedAlerts.includes(a.id) && a.id !== "bat_not_optimal");
 
   const hasCritical = visibleAlerts.some((a) => a.severity === "critical");
   const hasWarning = visibleAlerts.some((a) => a.severity === "warning");
