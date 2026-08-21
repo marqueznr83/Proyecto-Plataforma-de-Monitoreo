@@ -83,110 +83,17 @@ export default function Home() {
     fetchTelemetry();
   }, [fetchTelemetry]);
 
-  // Helper dictionary to get human-readable titles for resolved alarms
-  const getAlertTitleById = (alertId) => {
-    switch (alertId) {
-      case "ac_outage": return "Corte de Entrada Red AC (Falta Suministro)";
-      case "ac_low_vac": return "Bajo Voltaje de Red AC (Inestabilidad)";
-      case "ac_high_vac": return "Sobrevoltaje en Red AC (Peligro)";
-      case "bat_critical": return "Voltaje de Batería Crítico (Descargada)";
-      case "bat_low": return "Batería en Nivel Bajo (Advertencia)";
-      default: return "Alerta General de Inversor";
+  // Helper to format UTC ISO string to local user time
+  const formatLocalTime = (isoString) => {
+    if (!isoString) return "--:--";
+    try {
+      if (!isoString.includes("T")) return isoString;
+      const d = new Date(isoString);
+      return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch (e) {
+      return isoString;
     }
   };
-
-  // Helper function to send telegram messages via serverless route proxy
-  const sendTelegramNotification = useCallback(async (alert, type) => {
-    if (!telegramConfig.botToken || !telegramConfig.chatId) return;
-
-    let text = "";
-    if (type === "active") {
-      const severityTitle = alert.severity === "critical" ? "🔴 <b>ALERTA CRÍTICA DE INVERSOR</b>" : "⚠️ <b>ADVERTENCIA DE SISTEMA</b>";
-      text = `${severityTitle}\n` +
-             `━━━━━━━━━━━━━━━━━━\n` +
-             `<blockquote><b>Evento:</b> ${alert.title}\n` +
-             `<b>Detalle:</b> ${alert.message}\n` +
-             `<b>Código:</b> <code>${alert.code}</code>\n` +
-             `<b>Hora:</b> ${alert.timestamp || new Date().toLocaleTimeString("es-ES")}</blockquote>\n` +
-             `━━━━━━━━━━━━━━━━━━\n` +
-             `🔌 <i>Monitoreo Residencial Nelson Márquez</i>`;
-    } else if (type === "resolved") {
-      text = `🟢 <b>SISTEMA RESTABLECIDO</b>\n` +
-             `━━━━━━━━━━━━━━━━━━\n` +
-             `<blockquote><b>Solucionado:</b> ${alert.title}\n` +
-             `<b>Estado:</b> Operación normal y segura.\n` +
-             `<b>Hora:</b> ${new Date().toLocaleTimeString("es-ES")}</blockquote>\n` +
-             `━━━━━━━━━━━━━━━━━━\n` +
-             `🔌 <i>Monitoreo Residencial Nelson Márquez</i>`;
-    }
-
-    try {
-      await fetch("/api/telegram", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          botToken: telegramConfig.botToken,
-          chatId: telegramConfig.chatId,
-          message: text
-        })
-      });
-    } catch (err) {
-      console.error("Fallo al enviar notificación a Telegram:", err);
-    }
-  }, [telegramConfig]);
-
-  // Notifications logic with localStorage anti-spam filter
-  useEffect(() => {
-    if (!data || !data.alerts || !telegramConfig.botToken || !telegramConfig.chatId) return;
-
-    const currentAlerts = data.alerts;
-    
-    let notifiedAlertIds = [];
-    try {
-      const savedNotified = localStorage.getItem("growatt_notified_alerts");
-      if (savedNotified) {
-        notifiedAlertIds = JSON.parse(savedNotified);
-      }
-    } catch (e) {
-      console.error("Fallo al parsear alertas notificadas", e);
-    }
-
-    const newNotifiedIds = [...notifiedAlertIds];
-    let hasChanges = false;
-
-    // 1. Notify NEW alarms
-    currentAlerts.forEach((alert) => {
-      // Skip the simulated connection banner
-      if (alert.id === "api_connection_warning") return;
-
-      if (!notifiedAlertIds.includes(alert.id)) {
-        sendTelegramNotification(alert, "active");
-        newNotifiedIds.push(alert.id);
-        hasChanges = true;
-      }
-    });
-
-    // 2. Notify RESOLVED alarms (when they are no longer in the active list)
-    notifiedAlertIds.forEach((alertId) => {
-      const isStillActive = currentAlerts.some((a) => a.id === alertId);
-      if (!isStillActive) {
-        const title = getAlertTitleById(alertId);
-        sendTelegramNotification({ id: alertId, title }, "resolved");
-        
-        const index = newNotifiedIds.indexOf(alertId);
-        if (index > -1) {
-          newNotifiedIds.splice(index, 1);
-        }
-        hasChanges = true;
-      }
-    });
-
-    if (hasChanges) {
-      localStorage.setItem("growatt_notified_alerts", JSON.stringify(newNotifiedIds));
-    }
-  }, [data?.alerts, telegramConfig, sendTelegramNotification]);
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-amber-500 selection:text-black">
@@ -253,7 +160,7 @@ export default function Home() {
               Monitoreo Inversor Growatt • Sr. Nelson
             </span>
             <span>•</span>
-            <span>Última actualización: <strong className="text-amber-500 font-mono">{data?.lastUpdated || "--:--"}</strong></span>
+            <span>Última actualización: <strong className="text-amber-500 font-mono">{formatLocalTime(data?.lastUpdated)}</strong></span>
           </div>
 
           <div className="flex items-center gap-4">

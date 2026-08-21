@@ -249,68 +249,7 @@ export default function ConfigModal({
             </div>
           </div>
 
-          {/* 3. Telegram Bot Notifications Integration */}
-          <div className="p-4.5 rounded-xl theme-well border border-slate-700/40 dark:border-slate-800 space-y-3.5 shadow-sm">
-            <div className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-indigo-500" />
-              <span className="text-xs font-extrabold uppercase tracking-wider">Notificaciones por Telegram Bot</span>
-            </div>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[11px] font-bold text-subtle mb-1">
-                  Telegram Bot Token:
-                </label>
-                <input
-                  type="text"
-                  value={tgToken}
-                  onChange={(e) => setTgToken(e.target.value)}
-                  placeholder="Ej: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                  className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 font-mono text-[11px]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-subtle mb-1">
-                    Telegram Chat ID (Canal o Chat):
-                  </label>
-                  <input
-                    type="text"
-                    value={tgChatId}
-                    onChange={(e) => setTgChatId(e.target.value)}
-                    placeholder="Ej: -100123456789 o 987654321"
-                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 font-mono text-[11px]"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={handleSendTestMessage}
-                    disabled={testStatus === "loading"}
-                    className="w-full px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5 h-[34px] shadow-sm"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{testStatus === "loading" ? "Enviando..." : "Mensaje de Prueba"}</span>
-                  </button>
-                </div>
-              </div>
-
-              {testStatus === "success" && (
-                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center gap-2 font-semibold">
-                  <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>¡Mensaje enviado con éxito a Telegram!</span>
-                </div>
-              )}
-
-              {testStatus === "error" && (
-                <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 flex items-center gap-2 font-semibold">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span className="leading-snug">{testErrorMsg}</span>
-                </div>
-              )}
-            </div>
-          </div>
 
           {/* 4. Paneles Solares Toggle */}
           <div className="p-4 rounded-xl theme-well border border-slate-700/40 dark:border-slate-800 flex items-center justify-between shadow-sm">

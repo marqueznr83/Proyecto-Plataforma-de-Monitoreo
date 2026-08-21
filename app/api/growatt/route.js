@@ -1,5 +1,101 @@
 import { NextResponse } from "next/server";
 
+// Keep cache in memory for serverless container warm cycles
+let globalNotifiedAlerts = [];
+
+async function sendTelegramMessage(text) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
+  const chatId = process.env.TELEGRAM_CHAT_ID || "-1004366083322";
+  
+  if (!botToken || !chatId) return;
+
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: "HTML"
+      })
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("Failed to send Telegram message:", json);
+    }
+  } catch (err) {
+    console.error("Error sending Telegram message:", err);
+  }
+}
+
+const getAlertTitleById = (alertId) => {
+  switch (alertId) {
+    case "ac_outage": return "Corte de Entrada Red AC (Falta Suministro)";
+    case "ac_low_vac": return "Bajo Voltaje de Red AC (Inestabilidad)";
+    case "ac_high_vac": return "Sobrevoltaje en Red AC (Peligro)";
+    case "bat_critical": return "Voltaje de Batería Crítico (Descargada)";
+    case "bat_low": return "Batería en Nivel Bajo (Advertencia)";
+    default: return "Alerta General de Inversor";
+  }
+};
+
+async function handleBackendNotifications(currentAlerts) {
+  const newNotifiedIds = [...globalNotifiedAlerts];
+  let hasChanges = false;
+
+  // 1. Notify NEW alarms
+  for (const alert of currentAlerts) {
+    if (alert.id === "api_connection_warning") continue;
+
+    if (!globalNotifiedAlerts.includes(alert.id)) {
+      const severityTitle = alert.severity === "critical" ? "🔴 <b>ALERTA CRÍTICA DE INVERSOR</b>" : "⚠️ <b>ADVERTENCIA DE SISTEMA</b>";
+      const localTimeStr = new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+      const text = `${severityTitle}\n` +
+                   `━━━━━━━━━━━━━━━━━━\n` +
+                   `<blockquote><b>Evento:</b> ${alert.title}\n` +
+                   `<b>Detalle:</b> ${alert.message}\n` +
+                   `<b>Código:</b> <code>${alert.code}</code>\n` +
+                   `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
+                   `━━━━━━━━━━━━━━━━━━\n` +
+                   `🔌 <i>Monitoreo Residencial Nelson Márquez</i>`;
+      
+      await sendTelegramMessage(text);
+      newNotifiedIds.push(alert.id);
+      hasChanges = true;
+    }
+  }
+
+  // 2. Notify RESOLVED alarms
+  for (const alertId of globalNotifiedAlerts) {
+    const isStillActive = currentAlerts.some((a) => a.id === alertId);
+    if (!isStillActive) {
+      const title = getAlertTitleById(alertId);
+      const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+      const text = `🟢 <b>SISTEMA RESTABLECIDO</b>\n` +
+                   `━━━━━━━━━━━━━━━━━━\n` +
+                   `<blockquote><b>Solucionado:</b> ${title}\n` +
+                   `<b>Estado:</b> Operación normal y segura.\n` +
+                   `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
+                   `━━━━━━━━━━━━━━━━━━\n` +
+                   `🔌 <i>Monitoreo Residencial Nelson Márquez</i>`;
+      
+      await sendTelegramMessage(text);
+      const index = newNotifiedIds.indexOf(alertId);
+      if (index > -1) {
+        newNotifiedIds.splice(index, 1);
+      }
+      hasChanges = true;
+    }
+  }
+
+  if (hasChanges) {
+    globalNotifiedAlerts = newNotifiedIds;
+  }
+}
+
 // Growatt API route proxy & smart telemetry engine (OpenAPI v1 Integration & Fallback Simulator)
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -23,6 +119,9 @@ export async function GET(request) {
     try {
       const realTelemetry = await getRealGrowattTelemetry(token, config);
       if (realTelemetry) {
+        // Trigger server-side alerts check & telegram notifier
+        await handleBackendNotifications(realTelemetry.alerts);
+        
         return NextResponse.json({
           source: "growatt_openapi_realtime",
           success: true,
@@ -42,10 +141,13 @@ export async function GET(request) {
         title: "⚠️ CONEXIÓN API GROWATT SIMULADA",
         message: `No se pudo conectar a los servidores de Growatt (${apiError?.error_msg || apiError?.message || "Código 10011: Permiso denegado/Token inactivo"}). Mostrando datos simulados calibrados de tu sistema de respaldo.`,
         code: `API_${apiError?.error_code || "CONN_ERR"}`,
-        timestamp: new Date().toLocaleTimeString("es-ES")
+        timestamp: new Date().toISOString()
       });
       simulatedData.status = "WARNING (SIMULADO)";
       simulatedData.hasWarningAlert = true;
+
+      // Trigger server-side alerts check & telegram notifier
+      await handleBackendNotifications(simulatedData.alerts);
 
       return NextResponse.json({
         source: "growatt_openapi_fallback",
@@ -57,6 +159,9 @@ export async function GET(request) {
 
   // Default to live high-fidelity simulation
   const liveTelemetry = generateLiveTelemetry(token, config);
+  // Trigger server-side alerts check & telegram notifier
+  await handleBackendNotifications(liveTelemetry.alerts);
+  
   return NextResponse.json({
     source: "telemetry_engine_v3",
     success: true,
@@ -219,7 +324,7 @@ async function getRealGrowattTelemetry(token, config) {
       title: "🚨 CORTE DE ENERGÍA: SIN ENTRADA RED AC",
       message: "El inversor no detecta tensión de red eléctrica. Operando en modo Respaldo Ininterrumpido desde Batería (UPS).",
       code: "E01_NO_AC",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   } else if (vac < config.minGridVac) {
     alerts.push({
@@ -228,7 +333,7 @@ async function getRealGrowattTelemetry(token, config) {
       title: "⚠️ BAJO VOLTAJE DE RED AC",
       message: `Voltaje de red eléctrica por debajo del umbral de advertencia (${vac}V < ${config.minGridVac}V).`,
       code: "W02_LOW_VAC",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   } else if (vac > config.maxGridVac) {
     alerts.push({
@@ -237,7 +342,7 @@ async function getRealGrowattTelemetry(token, config) {
       title: "🚨 SOBREVOLTAJE EN RED AC",
       message: `Voltaje de red eléctrica peligroso (${vac}V > ${config.maxGridVac}V). Activada protección en inversor.`,
       code: "E03_HIGH_VAC",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   }
 
@@ -248,7 +353,7 @@ async function getRealGrowattTelemetry(token, config) {
       title: "🚨 VOLTAJE DE BATERÍA CRÍTICO (ROJO)",
       message: `Carga y voltaje de batería crítico: ${batterySOC}% (${batteryVoltage}V). Límite: ${config.criticalBatSOC}%.`,
       code: "E10_BAT_CRITICAL",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   } else if (batterySOC <= config.lowBatSOC) {
     alerts.push({
@@ -257,7 +362,7 @@ async function getRealGrowattTelemetry(token, config) {
       title: "⚠️ BATERÍA EN NIVEL BAJO (AMARILLO)",
       message: `Estado de carga de batería bajo: ${batterySOC}% (${batteryVoltage}V). Límite aviso: ${config.lowBatSOC}%.`,
       code: "W11_BAT_LOW",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   }
 
@@ -327,7 +432,7 @@ async function getRealGrowattTelemetry(token, config) {
     co2SavedKg: 0,
     treesSaved: 0,
     hourlyData,
-    lastUpdated: now.toLocaleTimeString("es-ES", { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    lastUpdated: now.toISOString()
   };
 }
 
@@ -407,7 +512,7 @@ function generateLiveTelemetry(token, config) {
       title: "🚨 CORTE DE ENERGÍA: SIN ENTRADA RED AC",
       message: "El inversor no detecta tensión de red eléctrica. Operando en modo Respaldo Ininterrumpido desde Batería (UPS).",
       code: "E01_NO_AC",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   } else if (vac < config.minGridVac) {
     alerts.push({
@@ -416,7 +521,7 @@ function generateLiveTelemetry(token, config) {
       title: "⚠️ BAJO VOLTAJE DE RED AC",
       message: `Voltaje de red eléctrica por debajo del umbral de advertencia (${vac}V < ${config.minGridVac}V).`,
       code: "W02_LOW_VAC",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   } else if (vac > config.maxGridVac) {
     alerts.push({
@@ -425,7 +530,7 @@ function generateLiveTelemetry(token, config) {
       title: "🚨 SOBREVOLTAJE EN RED AC",
       message: `Voltaje de red eléctrica peligroso (${vac}V > ${config.maxGridVac}V). Activada protección en inversor.`,
       code: "E03_HIGH_VAC",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   }
 
@@ -436,7 +541,7 @@ function generateLiveTelemetry(token, config) {
       title: "🚨 VOLTAJE DE BATERÍA CRÍTICO (ROJO)",
       message: `Nivel de carga y voltaje en estado crítico: ${batterySOC}% (${batteryVoltage}V). Límite configurado: ${config.criticalBatSOC}%.`,
       code: "E10_BAT_CRITICAL",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   } else if (batterySOC <= config.lowBatSOC) {
     alerts.push({
@@ -445,7 +550,7 @@ function generateLiveTelemetry(token, config) {
       title: "⚠️ BATERÍA EN NIVEL BAJO (AMARILLO)",
       message: `Estado de carga de batería en nivel bajo: ${batterySOC}% (${batteryVoltage}V). Límite de advertencia: ${config.lowBatSOC}%.`,
       code: "W11_BAT_LOW",
-      timestamp: now.toLocaleTimeString("es-ES")
+      timestamp: now.toISOString()
     });
   }
 
@@ -520,6 +625,6 @@ function generateLiveTelemetry(token, config) {
     co2SavedKg: Number((eToday * 0.709).toFixed(2)),
     treesSaved: Number((eToday * 0.709 / 20).toFixed(1)),
     hourlyData: hourlyData,
-    lastUpdated: now.toLocaleTimeString("es-ES", { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    lastUpdated: now.toISOString()
   };
 }

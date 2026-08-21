@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sun, RefreshCw, Settings, Zap, Bell, AlertTriangle, ShieldAlert, CheckCircle2, Trash2 } from "lucide-react";
+import { Sun, RefreshCw, Settings, Zap, Bell, AlertTriangle, ShieldAlert, CheckCircle2, Trash2, Send } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }) {
@@ -197,7 +197,15 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
                             {alert.title}
                           </span>
                           <span className="text-[10px] font-mono text-subtle font-bold">
-                            {alert.timestamp}
+                            {(() => {
+                              if (!alert.timestamp) return "";
+                              try {
+                                if (!alert.timestamp.includes("T")) return alert.timestamp;
+                                return new Date(alert.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                              } catch (e) {
+                                return alert.timestamp;
+                              }
+                            })()}
                           </span>
                         </div>
                         
@@ -237,6 +245,18 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
             <RefreshCw className={`w-3.5 h-3.5 text-amber-500 ${isRefreshing ? "animate-spin" : ""}`} />
             <span className="font-mono text-amber-500 font-extrabold">{countdown}s</span>
           </button>
+
+          {/* Telegram Bot Button */}
+          <a
+            href="https://t.me/tlgnelson_bot"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-[#0088cc] hover:bg-[#0077b3] text-white transition-all shadow-sm active:scale-95 border border-sky-500/20"
+            title="Iniciar o Vincular Bot de Telegram"
+          >
+            <Send className="w-3.5 h-3.5 -rotate-45" />
+            <span>@tlgnelson_bot</span>
+          </a>
 
           {/* Settings Modal Button */}
           <button
