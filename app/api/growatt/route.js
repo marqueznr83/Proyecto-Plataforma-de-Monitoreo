@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 // Keep cache in memory for serverless container warm cycles
 let globalNotifiedAlerts = [];
 
@@ -203,10 +205,20 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
         options.body = formBody.join("&");
       }
       
-      const res = await fetch(url.toString(), { 
-        ...options, 
-        next: { revalidate: 300 } // Cache 5 min to avoid rate limits
-      });
+      // Setup AbortController for 4-second timeout to prevent serverless function hangs
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      let res;
+      try {
+        res = await fetch(url.toString(), { 
+          ...options, 
+          cache: "no-store",
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       
       if (!res.ok) continue;
       
@@ -217,9 +229,11 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
         return json.data || json;
       } else {
         lastError = json;
+        console.error(`Growatt API error on ${domain} for path ${path}:`, json);
       }
     } catch (e) {
       lastError = e;
+      console.error(`Growatt connection failed on ${domain} for path ${path}:`, e.name === "AbortError" ? "Timeout (exceeded 4s)" : e.message);
     }
   }
   
