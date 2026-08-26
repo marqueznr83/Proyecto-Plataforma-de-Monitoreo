@@ -8,9 +8,17 @@ export const dynamic = "force-dynamic";
 let globalNotifiedAlerts = [];
 let acOutageStartTime = null;
 
+// Server-side cache for Growatt OpenAPI telemetry to avoid extra requests on F5/reloads
+let lastGrowattTelemetry = null;
+let lastTelemetryTime = 0;
+let lastOfflineTime = 0;
+
 const chatIdsFilePath = path.join(process.cwd(), "chat_ids.json");
 
-function getRegisteredChatIds() {
+const kvUrl = process.env.KV_REST_API_URL;
+const kvToken = process.env.KV_REST_API_TOKEN;
+
+async function getRegisteredChatIds() {
   let ids = [];
   
   // 1. Read from environment variable first (comma-separated list)
@@ -25,8 +33,9 @@ function getRegisteredChatIds() {
       const fileIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
       if (Array.isArray(fileIds)) {
         for (const fileId of fileIds) {
-          if (!ids.includes(fileId)) {
-            ids.push(fileId);
+          const sId = String(fileId);
+          if (!ids.includes(sId)) {
+            ids.push(sId);
           }
         }
       }
@@ -35,18 +44,42 @@ function getRegisteredChatIds() {
     console.error("Error reading chat_ids.json:", e.message);
   }
 
-  // 3. Sync with global Vercel cache (best effort)
+  // 3. Load from Vercel KV if available
+  if (kvUrl && kvToken) {
+    try {
+      const kvRes = await fetch(`${kvUrl}/get/chat_ids`, {
+        headers: { Authorization: `Bearer ${kvToken}` }
+      });
+      const kvJson = await kvRes.json();
+      if (kvJson && kvJson.result) {
+        const kvIds = JSON.parse(kvJson.result);
+        if (Array.isArray(kvIds)) {
+          for (const kvId of kvIds) {
+            const sId = String(kvId);
+            if (!ids.includes(sId)) {
+              ids.push(sId);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error reading from Vercel KV:", e.message);
+    }
+  }
+
+  // 4. Sync with global Vercel cache (best effort)
   if (global.vercelChatIds && Array.isArray(global.vercelChatIds)) {
     for (const id of global.vercelChatIds) {
-      if (!ids.includes(id)) {
-        ids.push(id);
+      const sId = String(id);
+      if (!ids.includes(sId)) {
+        ids.push(sId);
       }
     }
   }
 
-  // 4. Default fallback if empty (original group ID)
+  // 5. Default fallback if empty (original user private Chat ID)
   if (ids.length === 0) {
-    return ["-1004366083322"];
+    return ["8003576551"];
   }
   
   return ids;
@@ -54,7 +87,7 @@ function getRegisteredChatIds() {
 
 async function sendTelegramMessage(text) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
-  const chatIds = getRegisteredChatIds();
+  const chatIds = await getRegisteredChatIds();
   
   if (!botToken || chatIds.length === 0) return;
 
@@ -270,8 +303,16 @@ export async function GET(request) {
   if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
     const webhookUrl = `https://${host}/api/telegram`;
-    fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`)
-      .catch((err) => console.error("Error setting dynamic Telegram webhook:", err.message));
+    try {
+      const infoRes = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
+      const infoJson = await infoRes.json();
+      if (infoJson?.ok && infoJson?.result?.url !== webhookUrl) {
+        console.log(`Setting Telegram Webhook dynamically to: ${webhookUrl}`);
+        await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+      }
+    } catch (err) {
+      console.error("Error managing dynamic Telegram webhook:", err.message);
+    }
   }
   
   // Custom Alarm & System Configuration from query params
@@ -288,9 +329,58 @@ export async function GET(request) {
 
   // If not in demo mode, attempt to connect to the real Growatt OpenAPI
   if (!isDemoMode && token && token !== "demo") {
+    const nowMs = Date.now();
+    // 1. Return cached offline state if within 2 minutes to prevent hammering Growatt when down
+    if (nowMs - lastOfflineTime < 120000) {
+      return NextResponse.json({
+        source: "growatt_openapi_offline_cached",
+        success: true,
+        data: {
+          plantName: "Residencial Sr. Nelson",
+          inverterModel: "Growatt Inverter UPS",
+          serialNumber: "AOE9CJC058",
+          status: "MÓDULO DESCONECTADO",
+          statusMessage: "Conexión con el inversor perdida (Caché)",
+          isOffline: true,
+          alerts: [
+            {
+              id: "wifi_offline",
+              severity: "warning",
+              title: "⚠️ MÓDULO WI-FI FUERA DE LÍNEA",
+              message: "Conexión en pausa para evitar exceso de peticiones. Reintentando pronto.",
+              code: "API_CONN_ERR_CACHED",
+              timestamp: new Date().toISOString()
+            }
+          ],
+          batterySOC: null,
+          batteryVoltage: null,
+          houseLoad: null,
+          vac: null,
+          fac: null,
+          pac: null,
+          temperature: null,
+          hasWarningAlert: true,
+          hasCriticalAlert: false
+        }
+      });
+    }
+
+    // 2. Return cached telemetry if requested within 4 minutes and 50 seconds (290,000 ms)
+    if (lastGrowattTelemetry && (nowMs - lastTelemetryTime < 290000)) {
+      return NextResponse.json({
+        source: "growatt_openapi_cached",
+        success: true,
+        data: lastGrowattTelemetry
+      });
+    }
+
     try {
       const realTelemetry = await getRealGrowattTelemetry(token, config);
       if (realTelemetry) {
+        // Save to cache on successful load
+        lastGrowattTelemetry = realTelemetry;
+        lastTelemetryTime = nowMs;
+
         // Trigger server-side alerts check & telegram notifier
         await handleBackendNotifications(realTelemetry);
         
@@ -302,6 +392,9 @@ export async function GET(request) {
       }
     } catch (apiError) {
       console.warn("Growatt OpenAPI fetch failed or permission denied, using offline state. Error details:", apiError);
+      
+      // Update offline cache timestamp to throttle subsequent F5 requests
+      lastOfflineTime = nowMs;
       
       const offlineData = {
         plantName: "Residencial Sr. Nelson",

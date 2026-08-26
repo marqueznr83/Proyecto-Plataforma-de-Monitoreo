@@ -14,6 +14,38 @@ function saveChatIds(ids) {
   }
 }
 
+const kvUrl = process.env.KV_REST_API_URL;
+const kvToken = process.env.KV_REST_API_TOKEN;
+
+async function getKvChatIds() {
+  if (!kvUrl || !kvToken) return [];
+  try {
+    const res = await fetch(`${kvUrl}/get/chat_ids`, {
+      headers: { Authorization: `Bearer ${kvToken}` }
+    });
+    const json = await res.json();
+    if (json && json.result) {
+      return JSON.parse(json.result);
+    }
+  } catch (e) {
+    console.error("KV read error:", e.message);
+  }
+  return [];
+}
+
+async function saveKvChatIds(ids) {
+  if (!kvUrl || !kvToken) return;
+  try {
+    await fetch(`${kvUrl}/set/chat_ids`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${kvToken}` },
+      body: JSON.stringify(ids)
+    });
+  } catch (e) {
+    console.error("KV write error:", e.message);
+  }
+}
+
 // In-memory fallback list for serverless container hot starts
 if (!global.vercelChatIds) {
   global.vercelChatIds = [];
@@ -23,7 +55,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
-    const defaultChatId = process.env.TELEGRAM_CHAT_ID || "-1004366083322";
+    const defaultChatId = process.env.TELEGRAM_CHAT_ID || "8003576551";
 
     // CASE 1: Incoming Telegram Webhook Update (e.g., user clicked /start)
     if (body.update_id && body.message && body.message.chat) {
@@ -39,12 +71,23 @@ export async function POST(request) {
           }
         } catch (e) {}
 
-        if (!chatIds.includes(chatId)) {
-          chatIds.push(chatId);
-          saveChatIds(chatIds);
+        // Load existing IDs from Vercel KV
+        const kvIds = await getKvChatIds();
+        for (const kid of kvIds) {
+          const sId = String(kid);
+          if (!chatIds.includes(sId)) {
+            chatIds.push(sId);
+          }
         }
-        if (!global.vercelChatIds.includes(chatId)) {
-          global.vercelChatIds.push(chatId);
+
+        const sChatId = String(chatId);
+        if (!chatIds.includes(sChatId)) {
+          chatIds.push(sChatId);
+          saveChatIds(chatIds);
+          await saveKvChatIds(chatIds);
+        }
+        if (!global.vercelChatIds.includes(sChatId)) {
+          global.vercelChatIds.push(sChatId);
         }
 
         // Send success notification to user
