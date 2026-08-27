@@ -129,7 +129,30 @@ const getAlertTitleById = (alertId) => {
 async function handleBackendNotifications(data) {
   const currentAlerts = data.alerts || [];
   const isOffline = data.isOffline || false;
-  const newNotifiedIds = [...globalNotifiedAlerts];
+  
+  // Load state from Vercel KV or fall back to memory
+  let notifiedAlerts = [...globalNotifiedAlerts];
+  let outageStartTime = acOutageStartTime;
+
+  if (kvUrl && kvToken) {
+    try {
+      const kvRes = await fetch(`${kvUrl}/get/growatt_state`, {
+        headers: { Authorization: `Bearer ${kvToken}` }
+      });
+      const kvJson = await kvRes.json();
+      if (kvJson && kvJson.result) {
+        const state = JSON.parse(kvJson.result);
+        if (state) {
+          if (Array.isArray(state.notifiedAlerts)) notifiedAlerts = state.notifiedAlerts;
+          if (state.acOutageStartTime !== undefined) outageStartTime = state.acOutageStartTime;
+        }
+      }
+    } catch (e) {
+      console.error("Error reading state from Vercel KV:", e.message);
+    }
+  }
+
+  const newNotifiedIds = [...notifiedAlerts];
   let hasChanges = false;
 
   const plantName = data.plantName || "Planta Nelson Márquez";
@@ -142,7 +165,7 @@ async function handleBackendNotifications(data) {
   for (const alert of currentAlerts) {
     if (alert.id === "api_connection_warning") continue;
 
-    if (!globalNotifiedAlerts.includes(alert.id)) {
+    if (!notifiedAlerts.includes(alert.id)) {
       let text = "";
       
       if (alert.id === "wifi_offline") {
@@ -153,8 +176,9 @@ async function handleBackendNotifications(data) {
                `━━━━━━━━━━━━━━━━━━\n` +
                `El monitoreo en vivo está pausado hasta restablecer la señal.`;
       } else if (alert.id === "ac_outage") {
-        if (!acOutageStartTime) {
-          acOutageStartTime = Date.now();
+        if (!outageStartTime) {
+          outageStartTime = Date.now();
+          hasChanges = true;
         }
         text = `🚨 <b>CORTE DE LUZ – Planta Nelson Márquez</b>\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
@@ -198,7 +222,7 @@ async function handleBackendNotifications(data) {
 
   // 2. Notify RESOLVED alarms (Only when online, except wifi_offline)
   if (!isOffline) {
-    for (const alertId of globalNotifiedAlerts) {
+    for (const alertId of notifiedAlerts) {
       if (alertId === "wifi_offline") {
         const isStillActive = currentAlerts.some((a) => a.id === alertId);
         if (!isStillActive) {
@@ -220,75 +244,93 @@ async function handleBackendNotifications(data) {
       }
 
       const isStillActive = currentAlerts.some((a) => a.id === alertId);
-    if (!isStillActive) {
-      let text = "";
-      
-      if (alertId === "ac_outage") {
-        let durationStr = "Desconocida";
-        if (acOutageStartTime) {
-          const diffMs = Date.now() - acOutageStartTime;
-          const diffMin = Math.round(diffMs / 60000);
-          if (diffMin >= 60) {
-            const hours = Math.floor(diffMin / 60);
-            const mins = diffMin % 60;
-            durationStr = `${hours}h ${mins} min`;
-          } else {
-            durationStr = diffMin > 0 ? `${diffMin} min` : "< 1 min";
+      if (!isStillActive) {
+        let text = "";
+        
+        if (alertId === "ac_outage") {
+          let durationStr = "Desconocida";
+          if (outageStartTime) {
+            const diffMs = Date.now() - outageStartTime;
+            const diffMin = Math.round(diffMs / 60000);
+            if (diffMin >= 60) {
+              const hours = Math.floor(diffMin / 60);
+              const mins = diffMin % 60;
+              durationStr = `${hours}h ${mins} min`;
+            } else {
+              durationStr = diffMin > 0 ? `${diffMin} min` : "< 1 min";
+            }
+            outageStartTime = null;
+            hasChanges = true;
           }
-          acOutageStartTime = null;
+          text = `✅ <b>LUZ RESTABLECIDA – Planta Nelson Márquez</b>\n` +
+                 `━━━━━━━━━━━━━━━━━━\n` +
+                 `• Red Comercial: ${vac} V\n` +
+                 `• Duración del Corte: ${durationStr}\n` +
+                 `• Batería: ${batterySOC}% (${batteryVoltage} V)\n` +
+                 `━━━━━━━━━━━━━━━━━━`;
+        } else if (alertId === "bat_low") {
+          // Resolve silently (no Telegram alert sent) - we only notify at 80%
+          const index = newNotifiedIds.indexOf(alertId);
+          if (index > -1) {
+            newNotifiedIds.splice(index, 1);
+          }
+          hasChanges = true;
+          continue;
+        } else if (alertId === "bat_not_optimal") {
+          text = `🟢 <b>BATERÍA EN NIVEL ÓPTIMO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+                 `━━━━━━━━━━━━━━━━━━\n` +
+                 `• Voltaje: ${batteryVoltage} V\n` +
+                 `• Consumo: ${houseLoadWatts} W\n` +
+                 `━━━━━━━━━━━━━━━━━━\n` +
+                 `La batería ha cargado por encima del nivel óptimo del 80%.`;
+        } else if (alertId === "bat_critical") {
+          text = `🔋 <b>BATERÍA SUPERÓ EL LÍMITE CRÍTICO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+                 `━━━━━━━━━━━━━━━━━━\n` +
+                 `• Voltaje: ${batteryVoltage} V\n` +
+                 `• Consumo: ${houseLoadWatts} W\n` +
+                 `━━━━━━━━━━━━━━━━━━\n` +
+                 `La batería ha subido por encima del umbral crítico del 30%.`;
+        } else {
+          const title = getAlertTitleById(alertId);
+          const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+          text = `🟢 <b>SISTEMA RESTABLECIDO</b>\n` +
+                 `━━━━━━━━━━━━━━━━━━\n` +
+                 `<blockquote><b>Solucionado:</b> ${title}\n` +
+                 `<b>Estado:</b> Operación normal y segura.\n` +
+                 `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
+                 `━━━━━━━━━━━━━━━━━━\n` +
+                 `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
         }
-        text = `✅ <b>LUZ RESTABLECIDA – Planta Nelson Márquez</b>\n` +
-               `━━━━━━━━━━━━━━━━━━\n` +
-               `• Red Comercial: ${vac} V\n` +
-               `• Duración del Corte: ${durationStr}\n` +
-               `• Batería: ${batterySOC}% (${batteryVoltage} V)\n` +
-               `━━━━━━━━━━━━━━━━━━`;
-      } else if (alertId === "bat_low") {
-        // Resolve silently (no Telegram alert sent) - we only notify at 80%
+        
+        await sendTelegramMessage(text);
         const index = newNotifiedIds.indexOf(alertId);
         if (index > -1) {
           newNotifiedIds.splice(index, 1);
         }
         hasChanges = true;
-        continue;
-      } else if (alertId === "bat_not_optimal") {
-        text = `🟢 <b>BATERÍA EN NIVEL ÓPTIMO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
-               `━━━━━━━━━━━━━━━━━━\n` +
-               `• Voltaje: ${batteryVoltage} V\n` +
-               `• Consumo: ${houseLoadWatts} W\n` +
-               `━━━━━━━━━━━━━━━━━━\n` +
-               `La batería ha cargado por encima del nivel óptimo del 80%.`;
-      } else if (alertId === "bat_critical") {
-        text = `🔋 <b>BATERÍA SUPERÓ EL LÍMITE CRÍTICO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
-               `━━━━━━━━━━━━━━━━━━\n` +
-               `• Voltaje: ${batteryVoltage} V\n` +
-               `• Consumo: ${houseLoadWatts} W\n` +
-               `━━━━━━━━━━━━━━━━━━\n` +
-               `La batería ha subido por encima del umbral crítico del 30%.`;
-      } else {
-        const title = getAlertTitleById(alertId);
-        const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
-        text = `🟢 <b>SISTEMA RESTABLECIDO</b>\n` +
-               `━━━━━━━━━━━━━━━━━━\n` +
-               `<blockquote><b>Solucionado:</b> ${title}\n` +
-               `<b>Estado:</b> Operación normal y segura.\n` +
-               `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
-               `━━━━━━━━━━━━━━━━━━\n` +
-               `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
       }
-      
-      await sendTelegramMessage(text);
-      const index = newNotifiedIds.indexOf(alertId);
-      if (index > -1) {
-        newNotifiedIds.splice(index, 1);
-      }
-      hasChanges = true;
     }
-  }
   }
 
   if (hasChanges) {
     globalNotifiedAlerts = newNotifiedIds;
+    acOutageStartTime = outageStartTime;
+
+    // Persist state to Vercel KV
+    if (kvUrl && kvToken) {
+      try {
+        await fetch(`${kvUrl}/set/growatt_state`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${kvToken}` },
+          body: JSON.stringify({
+            notifiedAlerts: newNotifiedIds,
+            acOutageStartTime: outageStartTime
+          })
+        });
+      } catch (e) {
+        console.error("Error saving state to Vercel KV:", e.message);
+      }
+    }
   }
 }
 
