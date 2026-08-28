@@ -741,27 +741,9 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
 // Fetch and merge real plant, device and battery data from OpenAPI
 async function getRealGrowattTelemetry(token, config) {
   const now = new Date();
-
-  // 1. Get user plants
-  const plantListRes = await fetchGrowattOpenAPI(token, "/v1/plant/list");
-  const plants = plantListRes?.plants || plantListRes?.list || [];
-  if (plants.length === 0) {
-    throw new Error("No se encontraron plantas de energía en esta cuenta.");
-  }
-  
-  const plant = plants[0];
-  const plantId = plant.plant_id || plant.plantId;
-
-  // 2. Get device list
-  const deviceListRes = await fetchGrowattOpenAPI(token, "/v1/device/list", { plant_id: plantId });
-  const devices = deviceListRes?.devices || deviceListRes?.list || [];
-  if (devices.length === 0) {
-    throw new Error("No se encontraron inversores o dispositivos de almacenamiento.");
-  }
-
-  // Find storage (battery hybrid type 2) or inverter (type 1)
-  const storageDevice = devices.find(d => d.type === 2 || d.type === "storage" || d.model?.toLowerCase().includes("sph") || d.model?.toLowerCase().includes("spa"));
-  const inverterDevice = devices.find(d => d.type === 1 || d.type === "inverter") || devices[0];
+  const deviceSN = "AOE9CJC058";
+  const plantName = "Residencial Sr. Nelson";
+  const inverterModel = "Growatt Inverter UPS";
 
   let batterySOC = 100;
   let batteryVoltage = 53.3;
@@ -771,49 +753,48 @@ async function getRealGrowattTelemetry(token, config) {
   let fac = 60.0;
   let pac = 0;
   let houseLoad = 0;
+  let success = false;
 
-  // 3. Query real-time metrics for storage if present
-  if (storageDevice) {
-    try {
-      const storageData = await fetchGrowattOpenAPI(token, "/v1/device/storage/storage_last_data", {}, "POST", {
-        storage_sn: storageDevice.device_sn || storageDevice.deviceSn
-      });
-      
-      if (storageData) {
-        // Extract real BMS and Grid metrics
-        // capacity is the real Battery SOC, vBat is battery voltage
-        batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || storageData.batterySoc || 100);
-        batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : (storageData.batteryVoltage || 53.3);
-        
-        // pBat is positive for discharging and negative for charging. We invert it for our UI standard (+ charge, - discharge)
-        batteryPower = storageData.pBat !== undefined ? -storageData.pBat : 0;
-        
-        temperature = storageData.invTemperature || storageData.temperature || storageData.temp || 38.5;
-        vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
-        fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : (storageData.fGrid ? Number(Number(storageData.fGrid).toFixed(2)) : 60.0);
-        pac = storageData.outPutPower || storageData.pAcOutPut || 0;
-        
-        // In bypass mode, house consumption load is outputPower / pAcOutPut or 0 if idle
-        houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || storageData.pAcOutPut || 0;
-      }
-    } catch (storageErr) {
-      console.warn("Could not query detailed storage data, using base inverter metrics", storageErr);
+  // 1. Direct Single Query (storage/last_data) - Uses only 1 API request!
+  try {
+    const storageData = await fetchGrowattOpenAPI(token, "/v1/device/storage/storage_last_data", {}, "POST", {
+      storage_sn: deviceSN
+    });
+    
+    if (storageData) {
+      batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || 100);
+      batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : 53.3;
+      batteryPower = storageData.pBat !== undefined ? -storageData.pBat : 0;
+      temperature = storageData.invTemperature !== undefined ? Number(Number(storageData.invTemperature).toFixed(1)) : (storageData.temperature ? Number(Number(storageData.temperature).toFixed(1)) : 38.5);
+      vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
+      fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : 60.0;
+      pac = storageData.outPutPower || 0;
+      houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || 800;
+      success = true;
     }
-  } else if (inverterDevice) {
-    // Basic inverter metrics fallback
-    try {
-      const inverterData = await fetchGrowattOpenAPI(token, "/v1/device/inverter/inverter_last_data", {}, "POST", {
-        inverter_sn: inverterDevice.device_sn || inverterDevice.deviceSn
-      });
-      if (inverterData) {
-        vac = inverterData.vac1 !== undefined ? Number(Number(inverterData.vac1).toFixed(1)) : 230;
-        fac = inverterData.fac !== undefined ? Number(Number(inverterData.fac).toFixed(2)) : 60.0;
-        pac = inverterData.pac || 0;
-        temperature = inverterData.temp || 38.5;
+  } catch (storageErr) {
+    if (storageErr.message && !storageErr.message.includes("error_frequently_access")) {
+      try {
+        const invData = await fetchGrowattOpenAPI(token, "/v1/device/inverter/inverter_last_data", {}, "POST", {
+          inverter_sn: deviceSN
+        });
+        if (invData) {
+          vac = invData.vac1 !== undefined ? Number(Number(invData.vac1).toFixed(1)) : 230;
+          fac = invData.fac !== undefined ? Number(Number(invData.fac).toFixed(2)) : 60.0;
+          pac = invData.pac || 0;
+          temperature = invData.temp ? Number(Number(invData.temp).toFixed(1)) : 38.5;
+          success = true;
+        }
+      } catch (invErr) {
+        throw invErr;
       }
-    } catch (invErr) {
-      console.warn("Could not query inverter data", invErr);
+    } else {
+      throw storageErr;
     }
+  }
+
+  if (!success) {
+    throw new Error("No se pudo obtener datos del inversor.");
   }
 
   // Parse simulated/forced override if requested for debugging

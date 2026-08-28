@@ -172,25 +172,15 @@ async function fetchGrowattOpenAPI(token, apiPath, queryParams = {}, method = "G
   throw lastError || new Error("Failed to connect to Growatt OpenAPI");
 }
 
+let cachedDeviceSN = "AOE9CJC058";
+let cachedPlantName = "Residencial Sr. Nelson";
+let cachedModel = "Growatt Inverter UPS";
+
 export async function runTelemetryCheck() {
   const token = (process.env.GROWATT_API_TOKEN || "75433vd880684dfp20nav03t8zb10xp1").trim();
   const now = new Date();
 
   try {
-    const plantListRes = await fetchGrowattOpenAPI(token, "/v1/plant/list");
-    const plants = plantListRes?.plants || plantListRes?.list || [];
-    if (plants.length === 0) return;
-
-    const plant = plants[0];
-    const plantId = plant.plant_id || plant.plantId;
-
-    const deviceListRes = await fetchGrowattOpenAPI(token, "/v1/device/list", { plant_id: plantId });
-    const devices = deviceListRes?.devices || deviceListRes?.list || [];
-    if (devices.length === 0) return;
-
-    const storageDevice = devices.find(d => d.type === 2 || d.type === "storage" || d.model?.toLowerCase().includes("sph") || d.model?.toLowerCase().includes("spa"));
-    const inverterDevice = devices.find(d => d.type === 1 || d.type === "inverter") || devices[0];
-
     let batterySOC = 100;
     let batteryVoltage = 53.3;
     let temperature = 38.5;
@@ -198,40 +188,51 @@ export async function runTelemetryCheck() {
     let fac = 60.0;
     let pac = 0;
     let houseLoad = 800;
+    let successFetch = false;
 
-    if (storageDevice) {
-      try {
-        const storageData = await fetchGrowattOpenAPI(token, "/v1/device/storage/storage_last_data", {}, "POST", {
-          storage_sn: storageDevice.device_sn || storageDevice.deviceSn
-        });
-        if (storageData) {
-          batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || 100);
-          batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : 53.3;
-          temperature = storageData.invTemperature || storageData.temperature || 38.5;
-          vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
-          fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : 60.0;
-          pac = storageData.outPutPower || 0;
-          houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || 800;
+    // Direct single query for storage/inverter live data (1 single API call per cycle!)
+    try {
+      const storageData = await fetchGrowattOpenAPI(token, "/v1/device/storage/storage_last_data", {}, "POST", {
+        storage_sn: cachedDeviceSN
+      });
+      if (storageData) {
+        batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || 100);
+        batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : 53.3;
+        temperature = storageData.invTemperature !== undefined ? Number(Number(storageData.invTemperature).toFixed(1)) : (storageData.temperature ? Number(Number(storageData.temperature).toFixed(1)) : 38.5);
+        vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
+        fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : 60.0;
+        pac = storageData.outPutPower || 0;
+        houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || 800;
+        successFetch = true;
+      }
+    } catch (storageErr) {
+      // If storage endpoint failed with non-rate-limit error, try inverter endpoint
+      if (storageErr.message && !storageErr.message.includes("error_frequently_access")) {
+        try {
+          const invData = await fetchGrowattOpenAPI(token, "/v1/device/inverter/inverter_last_data", {}, "POST", {
+            inverter_sn: cachedDeviceSN
+          });
+          if (invData) {
+            vac = invData.vac1 !== undefined ? Number(Number(invData.vac1).toFixed(1)) : 230;
+            fac = invData.fac !== undefined ? Number(Number(invData.fac).toFixed(2)) : 60.0;
+            pac = invData.pac || 0;
+            temperature = invData.temp ? Number(Number(invData.temp).toFixed(1)) : 38.5;
+            successFetch = true;
+          }
+        } catch (invErr) {
+          throw invErr;
         }
-      } catch (e) {}
-    } else if (inverterDevice) {
-      try {
-        const inverterData = await fetchGrowattOpenAPI(token, "/v1/device/inverter/inverter_last_data", {}, "POST", {
-          inverter_sn: inverterDevice.device_sn || inverterDevice.deviceSn
-        });
-        if (inverterData) {
-          vac = inverterData.vac1 !== undefined ? Number(Number(inverterData.vac1).toFixed(1)) : 230;
-          fac = inverterData.fac !== undefined ? Number(Number(inverterData.fac).toFixed(2)) : 60.0;
-          pac = inverterData.pac || 0;
-          temperature = inverterData.temp || 38.5;
-        }
-      } catch (e) {}
+      } else {
+        throw storageErr;
+      }
     }
 
+    if (!successFetch) return;
+
     const telemetryData = {
-      plantName: plant.name || plant.plant_name || "Residencial Sr. Nelson",
-      inverterModel: inverterDevice.model || "Growatt Inverter UPS",
-      serialNumber: inverterDevice.device_sn || inverterDevice.deviceSn || "AOE9CJC058",
+      plantName: cachedPlantName,
+      inverterModel: cachedModel,
+      serialNumber: cachedDeviceSN,
       status: vac === 0 ? "CORTE DE LUZ" : "NORMAL",
       isOffline: false,
       vac,
@@ -409,8 +410,8 @@ export function startBackgroundMonitoring() {
     runTelemetryCheck().catch(() => {});
   }, 3000);
 
-  // Run recurring loop every 3 minutes (180,000 ms)
+  // Run recurring loop every 5 minutes (300,000 ms)
   setInterval(() => {
     runTelemetryCheck().catch(() => {});
-  }, 180000);
+  }, 300000);
 }

@@ -201,23 +201,9 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
 }
 
 async function fetchLiveGrowattData(token) {
-  const plantListRes = await fetchGrowattOpenAPI(token, "/v1/plant/list");
-  const plants = plantListRes?.plants || plantListRes?.list || [];
-  if (plants.length === 0) {
-    throw new Error("No se encontraron plantas de energía en esta cuenta.");
-  }
-  
-  const plant = plants[0];
-  const plantId = plant.plant_id || plant.plantId;
-
-  const deviceListRes = await fetchGrowattOpenAPI(token, "/v1/device/list", { plant_id: plantId });
-  const devices = deviceListRes?.devices || deviceListRes?.list || [];
-  if (devices.length === 0) {
-    throw new Error("No se encontraron inversores o dispositivos de almacenamiento.");
-  }
-
-  const storageDevice = devices.find(d => d.type === 2 || d.type === "storage" || d.model?.toLowerCase().includes("sph") || d.model?.toLowerCase().includes("spa"));
-  const inverterDevice = devices.find(d => d.type === 1 || d.type === "inverter") || devices[0];
+  const deviceSN = "AOE9CJC058";
+  const plantName = "Residencial Sr. Nelson";
+  const inverterModel = "Growatt Inverter UPS";
 
   let batterySOC = 100;
   let batteryVoltage = 53.3;
@@ -226,38 +212,47 @@ async function fetchLiveGrowattData(token) {
   let fac = 60.0;
   let pac = 0;
   let houseLoad = 800;
+  let success = false;
 
-  if (storageDevice) {
-    try {
-      const storageData = await fetchGrowattOpenAPI(token, "/v1/device/storage/storage_last_data", {}, "POST", {
-        storage_sn: storageDevice.device_sn || storageDevice.deviceSn
-      });
-      
-      if (storageData) {
-        batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || storageData.batterySoc || 100);
-        batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : (storageData.batteryVoltage || 53.3);
-        temperature = storageData.invTemperature || storageData.temperature || storageData.temp || 38.5;
-        vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
-        fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : (storageData.fGrid ? Number(Number(storageData.fGrid).toFixed(2)) : 60.0);
-        pac = storageData.outPutPower || storageData.pAcOutPut || 0;
-        houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || storageData.pAcOutPut || 800;
-      }
-    } catch (storageErr) {
-      console.warn("Could not query detailed storage data in telegram route", storageErr);
+  try {
+    const storageData = await fetchGrowattOpenAPI(token, "/v1/device/storage/storage_last_data", {}, "POST", {
+      storage_sn: deviceSN
+    });
+    
+    if (storageData) {
+      batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || 100);
+      batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : 53.3;
+      temperature = storageData.invTemperature !== undefined ? Number(Number(storageData.invTemperature).toFixed(1)) : (storageData.temperature ? Number(Number(storageData.temperature).toFixed(1)) : 38.5);
+      vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
+      fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : 60.0;
+      pac = storageData.outPutPower || 0;
+      houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || 800;
+      success = true;
     }
-  } else if (inverterDevice) {
-    try {
-      const inverterData = await fetchGrowattOpenAPI(token, "/v1/device/inverter/inverter_last_data", {}, "POST", {
-        inverter_sn: inverterDevice.device_sn || inverterDevice.deviceSn
-      });
-      if (inverterData) {
-        vac = inverterData.vac1 !== undefined ? Number(Number(inverterData.vac1).toFixed(1)) : 230;
-        fac = inverterData.fac !== undefined ? Number(Number(inverterData.fac).toFixed(2)) : 60.0;
-        pac = inverterData.pac || 0;
-        temperature = inverterData.temp || 38.5;
+  } catch (storageErr) {
+    if (storageErr.message && !storageErr.message.includes("error_frequently_access")) {
+      try {
+        const inverterData = await fetchGrowattOpenAPI(token, "/v1/device/inverter/inverter_last_data", {}, "POST", {
+          inverter_sn: deviceSN
+        });
+        if (inverterData) {
+          vac = inverterData.vac1 !== undefined ? Number(Number(inverterData.vac1).toFixed(1)) : 230;
+          fac = inverterData.fac !== undefined ? Number(Number(inverterData.fac).toFixed(2)) : 60.0;
+          pac = inverterData.pac || 0;
+          temperature = inverterData.temp ? Number(Number(inverterData.temp).toFixed(1)) : 38.5;
+          success = true;
+        }
+      } catch (invErr) {
+        throw invErr;
       }
-    } catch (invErr) {
-      console.warn("Could not query inverter data in telegram route", invErr);
+    } else {
+      throw storageErr;
+    }
+  }
+
+  if (!success) {
+    throw new Error("No se pudo obtener datos del inversor.");
+  }
     }
   }
 
