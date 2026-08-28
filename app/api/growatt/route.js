@@ -497,7 +497,60 @@ export async function GET(request) {
   // If not in demo mode, attempt to connect to the real Growatt OpenAPI
   if (!isDemoMode && token && token !== "demo") {
     const nowMs = Date.now();
-    // 1. Return cached offline state if within 5 minutes to prevent hammering Growatt when down
+
+    // 1. Check Global memory cache (shared between monitor.js and route.js)
+    if (global.lastGrowattTelemetry && (nowMs - (global.lastGrowattTelemetryTime || 0) < 300000)) {
+      lastGrowattTelemetry = global.lastGrowattTelemetry;
+      lastTelemetryTime = global.lastGrowattTelemetryTime;
+      return NextResponse.json({
+        source: "growatt_openapi_global_cached",
+        success: true,
+        data: global.lastGrowattTelemetry
+      });
+    }
+
+    // 2. Check disk file cache (persisted by background monitor)
+    try {
+      if (fs.existsSync(telemetryFilePath)) {
+        const fileData = JSON.parse(fs.readFileSync(telemetryFilePath, "utf8"));
+        if (fileData && fileData.cachedAt && (nowMs - fileData.cachedAt < 300000)) {
+          global.lastGrowattTelemetry = fileData;
+          global.lastGrowattTelemetryTime = fileData.cachedAt;
+          lastGrowattTelemetry = fileData;
+          lastTelemetryTime = fileData.cachedAt;
+          return NextResponse.json({
+            source: "growatt_openapi_file_cached",
+            success: true,
+            data: fileData
+          });
+        }
+      }
+    } catch (e) {}
+
+    // 3. If rate limit cooldown is active, return latest cached data if available rather than error
+    if (global.growattRateLimitUntil && nowMs < global.growattRateLimitUntil) {
+      if (global.lastGrowattTelemetry) {
+        return NextResponse.json({
+          source: "growatt_cooldown_serving_cache",
+          success: true,
+          data: global.lastGrowattTelemetry
+        });
+      }
+      try {
+        if (fs.existsSync(telemetryFilePath)) {
+          const fileData = JSON.parse(fs.readFileSync(telemetryFilePath, "utf8"));
+          if (fileData) {
+            return NextResponse.json({
+              source: "growatt_cooldown_serving_disk",
+              success: true,
+              data: fileData
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 4. Return cached offline state if within 5 minutes to prevent hammering Growatt when down
     if (nowMs - lastOfflineTime < 300000) {
       return NextResponse.json({
         source: "growatt_openapi_offline_cached",
@@ -529,15 +582,6 @@ export async function GET(request) {
           hasWarningAlert: true,
           hasCriticalAlert: false
         }
-      });
-    }
-
-    // 2. Return cached telemetry if requested within 5 minutes (300,000 ms)
-    if (lastGrowattTelemetry && (nowMs - lastTelemetryTime < 300000)) {
-      return NextResponse.json({
-        source: "growatt_openapi_cached",
-        success: true,
-        data: lastGrowattTelemetry
       });
     }
 
@@ -620,10 +664,7 @@ export async function GET(request) {
 async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET", bodyParams = null) {
   if (global.growattRateLimitUntil && Date.now() < global.growattRateLimitUntil) {
     const remainingSec = Math.round((global.growattRateLimitUntil - Date.now()) / 1000);
-    throw {
-      error_code: 10012,
-      error_msg: `error_frequently_access (Enfriamiento activo: reintentando en ${remainingSec}s)`
-    };
+    throw new Error(`error_frequently_access (Enfriamiento activo: reintentando en ${remainingSec}s)`);
   }
 
   const domains = [
