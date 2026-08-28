@@ -253,13 +253,11 @@ async function fetchLiveGrowattData(token) {
   if (!success) {
     throw new Error("No se pudo obtener datos del inversor.");
   }
-    }
-  }
 
   return {
-    plantName: plant.name || plant.plant_name || "Residencial Sr. Nelson",
-    inverterModel: inverterDevice.model || "Growatt Inverter UPS",
-    serialNumber: inverterDevice.device_sn || inverterDevice.deviceSn || "AOE9CJC058",
+    plantName,
+    inverterModel,
+    serialNumber: deviceSN,
     status: vac === 0 ? "CORTE DE LUZ" : "NORMAL",
     isOffline: false,
     vac,
