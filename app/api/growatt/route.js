@@ -690,8 +690,6 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
       }
     } catch (e) {
       lastError = e;
-    }
-  }
       console.error(`Growatt connection failed on ${domain} for path ${path}:`, e.name === "AbortError" ? "Timeout (exceeded 4s)" : e.message);
     }
   }
