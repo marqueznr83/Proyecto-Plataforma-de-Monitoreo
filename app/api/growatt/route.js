@@ -415,16 +415,17 @@ export async function GET(request) {
   };
 
   // Set up Telegram webhook dynamically when hosted on Vercel
-  const host = request.headers.get("host");
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
   if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
+    const botToken = (process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0").trim();
     const webhookUrl = `https://${host}/api/telegram`;
     try {
       const infoRes = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
       const infoJson = await infoRes.json();
       if (infoJson?.ok && infoJson?.result?.url !== webhookUrl) {
         console.log(`Setting Telegram Webhook dynamically to: ${webhookUrl}`);
-        await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+        const allowedUpdates = JSON.stringify(["message", "edited_message", "channel_post", "my_chat_member", "chat_member", "callback_query"]);
+        await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}&allowed_updates=${encodeURIComponent(allowedUpdates)}`);
       }
     } catch (err) {
       console.error("Error managing dynamic Telegram webhook:", err.message);

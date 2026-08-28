@@ -31,7 +31,7 @@ export default function Home() {
   // Telegram bot configuration
   const [telegramConfig, setTelegramConfig] = useState({
     botToken: "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0",
-    chatId: "201650052"
+    chatId: ""
   });
 
   // Load Telegram config from localStorage on mount
@@ -40,10 +40,6 @@ export default function Home() {
     if (savedTg) {
       try {
         const parsed = JSON.parse(savedTg);
-        // Replace outdated invalid default chat ID if present
-        if (parsed.chatId === "-1004366083322") {
-          parsed.chatId = "201650052";
-        }
         setTelegramConfig(parsed);
       } catch (e) {
         console.error("Error al cargar la configuración de Telegram", e);

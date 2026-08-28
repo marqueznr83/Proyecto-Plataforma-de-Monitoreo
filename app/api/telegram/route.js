@@ -6,6 +6,14 @@ export const dynamic = "force-dynamic";
 
 const chatIdsFilePath = path.join(process.cwd(), "chat_ids.json");
 
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function saveChatIds(ids) {
   try {
     fs.writeFileSync(chatIdsFilePath, JSON.stringify(ids, null, 2), "utf8");
@@ -51,6 +59,71 @@ if (!global.vercelChatIds) {
   global.vercelChatIds = [];
 }
 
+async function getAllRegisteredChatIds(overrideChatId = null) {
+  let ids = [];
+
+  // 1. Explicit override passed
+  if (overrideChatId) {
+    const overrideList = String(overrideChatId).split(/[,\s]+/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    for (const id of overrideList) {
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+
+  // 2. Read from environment variable
+  const envChatId = process.env.TELEGRAM_CHAT_ID;
+  if (envChatId) {
+    const envList = envChatId.split(/[,\s]+/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    for (const id of envList) {
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+
+  // 3. Load from local file
+  try {
+    if (fs.existsSync(chatIdsFilePath)) {
+      const fileIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
+      if (Array.isArray(fileIds)) {
+        for (const fileId of fileIds) {
+          const sId = String(fileId).trim();
+          if (sId && !ids.includes(sId)) {
+            ids.push(sId);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error reading chat_ids.json:", e.message);
+  }
+
+  // 4. Load from Vercel KV
+  const kvChatIds = await getKvChatIds();
+  if (Array.isArray(kvChatIds)) {
+    for (const kvId of kvChatIds) {
+      const sId = String(kvId).trim();
+      if (sId && !ids.includes(sId)) {
+        ids.push(sId);
+      }
+    }
+  }
+
+  // 5. In-memory hot cache
+  if (global.vercelChatIds && Array.isArray(global.vercelChatIds)) {
+    for (const id of global.vercelChatIds) {
+      const sId = String(id).trim();
+      if (sId && !ids.includes(sId)) {
+        ids.push(sId);
+      }
+    }
+  }
+
+  if (ids.length === 0) {
+    return ["8003576551"];
+  }
+
+  return ids;
+}
+
 // GET: Bot diagnostics & Webhook status check
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -63,24 +136,14 @@ export async function GET(request) {
     const whRes = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
     const whData = await whRes.json();
 
-    let localChatIds = [];
-    try {
-      if (fs.existsSync(chatIdsFilePath)) {
-        localChatIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
-      }
-    } catch (e) {}
-
-    const kvChatIds = await getKvChatIds();
+    const allRegistered = await getAllRegisteredChatIds();
 
     return NextResponse.json({
       success: meData.ok,
       bot: meData.result || null,
       webhook: whData.result || null,
-      registeredChatIds: {
-        env: process.env.TELEGRAM_CHAT_ID ? process.env.TELEGRAM_CHAT_ID.split(/[,\s]+/) : [],
-        localFile: localChatIds,
-        kv: kvChatIds
-      }
+      registeredCount: allRegistered.length,
+      registeredChatIds: allRegistered
     });
   } catch (err) {
     return NextResponse.json(
@@ -94,64 +157,120 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const botToken = (process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0").trim();
-    const defaultChatId = (process.env.TELEGRAM_CHAT_ID || "8003576551").trim();
 
-    // CASE 1: Incoming Telegram Webhook Update (e.g., user clicked /start)
-    if (body.update_id && body.message && body.message.chat) {
-      const chat = body.message.chat;
-      const text = body.message.text ? body.message.text.trim() : "";
-      const chatId = chat.id;
+    // CASE 1: Incoming Telegram Webhook Update (User starts bot, sends message, adds bot to group, etc.)
+    const message = body.message || body.channel_post || body.edited_message;
+    const chat = message?.chat || body.my_chat_member?.chat || body.chat_member?.chat || body.callback_query?.message?.chat;
 
-      if (text.startsWith("/start")) {
-        let chatIds = [];
-        try {
-          if (fs.existsSync(chatIdsFilePath)) {
-            chatIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
-          }
-        } catch (e) {}
+    if (body.update_id && chat && chat.id) {
+      const chatId = String(chat.id).trim();
+      const userName = chat.first_name || chat.title || "Usuario";
+      const text = message?.text ? message.text.trim() : "";
 
-        // Load existing IDs from Vercel KV
-        const kvIds = await getKvChatIds();
-        for (const kid of kvIds) {
-          const sId = String(kid).trim();
-          if (sId && !chatIds.includes(sId)) {
-            chatIds.push(sId);
-          }
+      // 1. Load existing registered IDs
+      let chatIds = [];
+      try {
+        if (fs.existsSync(chatIdsFilePath)) {
+          chatIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
         }
+      } catch (e) {}
 
-        const sChatId = String(chatId).trim();
-        if (sChatId && !chatIds.includes(sChatId)) {
-          chatIds.push(sChatId);
-          saveChatIds(chatIds);
-          await saveKvChatIds(chatIds);
+      const kvIds = await getKvChatIds();
+      for (const kid of kvIds) {
+        const sId = String(kid).trim();
+        if (sId && !chatIds.includes(sId)) {
+          chatIds.push(sId);
         }
-        if (sChatId && !global.vercelChatIds.includes(sChatId)) {
-          global.vercelChatIds.push(sChatId);
-        }
+      }
 
-        // Send success notification to user
+      // 2. Automatically register this Chat ID without any whitelist check
+      let isNewSubscriber = false;
+      if (!chatIds.includes(chatId)) {
+        chatIds.push(chatId);
+        saveChatIds(chatIds);
+        await saveKvChatIds(chatIds);
+        isNewSubscriber = true;
+      }
+      if (!global.vercelChatIds.includes(chatId)) {
+        global.vercelChatIds.push(chatId);
+      }
+
+      // 3. Send automatic welcome / response message
+      if (text.startsWith("/start") || isNewSubscriber) {
+        const welcomeText =
+          `🔌 <b>¡Monitoreo Growatt Activado!</b>\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `Hola <b>${escapeHtml(userName)}</b>, has quedado <b>suscrito automáticamente</b> al sistema de notificaciones de la residencia de <b>Nelson Márquez</b>.\n\n` +
+          `Recibirás alertas en tiempo real sobre:\n` +
+          `• 🚨 <b>Cortes de luz</b> (Falla de Red Eléctrica AC)\n` +
+          `• ✅ <b>Restablecimiento de energía</b> y duración del corte\n` +
+          `• 🔋 <b>Nivel de baterías</b> (Advertencia de Batería Baja y Crítica)\n` +
+          `• ⚠️ <b>Sobrevoltaje o anomalías</b> del inversor\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `<i>No requieres configuración adicional. Este chat recibirá las alertas de forma inmediata.</i>`;
+
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🔌 <b>¡Monitoreo Nelson Márquez Activado!</b>\n\nHola <b>${chat.first_name || "Usuario"}</b>, has vinculado exitosamente tu chat al sistema de alertas de la Planta Nelson Márquez.\n\nRecibirás las notificaciones de cortes de red y estado de baterías directamente aquí.`,
+            text: welcomeText,
             parse_mode: "HTML"
           })
         });
-
-        return NextResponse.json({ success: true, message: "Chat ID registrado exitosamente", chatId: sChatId });
+      } else if (text.startsWith("/status") || text.startsWith("/estado")) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `⚡ <b>Estado del Bot:</b> Activo y operativo.\nTu chat (<code>${chatId}</code>) está registrado para recibir todas las alertas en tiempo real.`,
+            parse_mode: "HTML"
+          })
+        });
+      } else if (text.startsWith("/help") || text.startsWith("/ayuda")) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `ℹ️ <b>Ayuda - Monitoreo Growatt</b>\n\nEste bot envía alertas automáticas cuando ocurren eventos en el sistema eléctrico del inversor Growatt.\n\n<b>Comandos:</b>\n• /start - Iniciar o renovar suscripción\n• /estado - Verificar estado de suscripción\n• /ayuda - Ver este mensaje`,
+            parse_mode: "HTML"
+          })
+        });
+      } else if (text) {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `✅ <b>Chat Suscrito</b> (ID: <code>${chatId}</code>)\nTu chat está activo para recibir todas las alertas del inversor.`,
+            parse_mode: "HTML"
+          })
+        });
       }
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        message: "Chat ID registrado y procesado exitosamente",
+        chatId: chatId,
+        totalSubscribers: chatIds.length
+      });
     }
 
-    // CASE 2: Proxy message send request (e.g., modal test button)
-    const { message, botToken: bodyToken, chatId: bodyChatId } = body;
+    // CASE 2: Proxy message send request (e.g., test notification from web dashboard)
+    const { message: sendMsg, botToken: bodyToken, chatId: bodyChatId } = body;
     const activeToken = (bodyToken || botToken).trim();
-    const targetChatIds = (bodyChatId || defaultChatId).toString().split(/[,\s]+/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    
+    // If no specific chatId is provided in the test payload, broadcast to all registered chat IDs!
+    let targetChatIds = [];
+    if (bodyChatId && bodyChatId.trim()) {
+      targetChatIds = bodyChatId.toString().split(/[,\s]+/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    } else {
+      targetChatIds = await getAllRegisteredChatIds();
+    }
 
-    if (!message) {
+    if (!sendMsg) {
       return NextResponse.json(
         { success: false, error: "Falta el cuerpo del mensaje." },
         { status: 400 }
@@ -160,7 +279,7 @@ export async function POST(request) {
 
     if (targetChatIds.length === 0) {
       return NextResponse.json(
-        { success: false, error: "No se proporcionó ningún Chat ID válido." },
+        { success: false, error: "No hay destinatarios registrados." },
         { status: 400 }
       );
     }
@@ -177,7 +296,7 @@ export async function POST(request) {
         },
         body: JSON.stringify({
           chat_id: chatId,
-          text: message,
+          text: sendMsg,
           parse_mode: "HTML",
         }),
       });
@@ -187,7 +306,7 @@ export async function POST(request) {
       // Fallback: If Telegram rejected HTML entities, strip tags and send as plain text
       if (!tgRes.ok && tgData?.description && tgData.description.includes("can't parse entities")) {
         console.warn(`[Telegram Proxy] Fallo de parseo HTML para ${chatId}. Reintentando en texto plano...`);
-        const plainText = message.replace(/<[^>]+>/g, "");
+        const plainText = sendMsg.replace(/<[^>]+>/g, "");
         tgRes = await fetch(tgUrl, {
           method: "POST",
           headers: {
@@ -215,7 +334,7 @@ export async function POST(request) {
     }
 
     if (anySuccess) {
-      return NextResponse.json({ success: true, results });
+      return NextResponse.json({ success: true, results, totalSent: results.filter(r => r.success).length });
     } else {
       const firstError = results[0]?.error || "Error al enviar mensaje a Telegram.";
       return NextResponse.json(

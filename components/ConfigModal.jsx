@@ -67,9 +67,9 @@ export default function ConfigModal({
   };
 
   const handleSendTestMessage = async () => {
-    if (!tgToken.trim() || !tgChatId.trim()) {
+    if (!tgToken.trim()) {
       setTestStatus("error");
-      setTestErrorMsg("Por favor completa el Bot Token y Chat ID antes de probar.");
+      setTestErrorMsg("Por favor verifica el Bot Token antes de probar.");
       return;
     }
 
@@ -84,11 +84,11 @@ export default function ConfigModal({
         },
         body: JSON.stringify({
           botToken: tgToken.trim(),
-          chatId: tgChatId.trim(),
+          chatId: tgChatId && tgChatId.trim() ? tgChatId.trim() : undefined,
           message: "<b>🔔 MONITOREO GROWATT</b>\n" +
                    "━━━━━━━━━━━━━━━━━━\n" +
                    "<blockquote>¡Mensaje de prueba exitoso!\n\n" +
-                   "Tu bot de Telegram está correctamente vinculado al canal de notificaciones de la residencia de <b>Nelson Márquez</b>.</blockquote>\n" +
+                   "Tu bot de Telegram está activo y las notificaciones automáticas están funcionando para la residencia de <b>Nelson Márquez</b>.</blockquote>\n" +
                    "━━━━━━━━━━━━━━━━━━\n" +
                    "🔌 <i>Monitoreo Residencial Nelson Márquez</i>"
         })
@@ -233,16 +233,22 @@ export default function ConfigModal({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Send className="w-5 h-5 text-sky-500" />
-                <span className="text-xs font-extrabold uppercase tracking-wider text-sky-600 dark:text-sky-400">Notificaciones de Telegram</span>
+                <span className="text-xs font-extrabold uppercase tracking-wider text-sky-600 dark:text-sky-400">Notificaciones de Telegram (Automáticas)</span>
               </div>
               <a
                 href="https://t.me/tlgnelson_bot"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] font-bold text-sky-500 hover:underline flex items-center gap-1"
+                className="text-[11px] font-bold text-sky-500 hover:underline flex items-center gap-1 bg-sky-500/10 px-2.5 py-1 rounded-md border border-sky-500/20"
               >
-                <span>@tlgnelson_bot</span>
+                <span>Abrir @tlgnelson_bot</span>
               </a>
+            </div>
+
+            <div className="p-3 rounded-lg bg-sky-500/10 border border-sky-500/20 text-xs text-sky-900 dark:text-sky-200">
+              <p className="font-semibold">
+                ✨ <b>Suscripción abierta y automática:</b> Cualquier persona o grupo que abra el bot en Telegram y presione <b>Iniciar (/start)</b> o le envíe un mensaje, quedará <b>suscrito automáticamente</b> para recibir las alertas en tiempo real sin necesidad de autorizaciones o IDs manuales.
+              </p>
             </div>
 
             <div className="space-y-3 text-xs">
@@ -261,17 +267,17 @@ export default function ConfigModal({
 
               <div>
                 <label className="block text-[11px] font-bold text-subtle mb-1">
-                  Chat ID / IDs destinatarios (separados por coma):
+                  Chat ID específico (Opcional - dejar en blanco para difundir a todos los suscritos):
                 </label>
                 <input
                   type="text"
                   value={tgChatId}
                   onChange={(e) => setTgChatId(e.target.value)}
-                  placeholder="8003576551, 5326442"
+                  placeholder="Dejar vacío para enviar a todos los registrados"
                   className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 font-mono text-[11px]"
                 />
                 <span className="text-[10px] text-subtle block mt-1">
-                  Puedes enviar <code>/start</code> al bot o consultar con <code>@userinfobot</code> para obtener tu ID numérico.
+                  Si se deja vacío, las alertas se enviarán automáticamente a todos los usuarios que hayan iniciado el bot.
                 </span>
               </div>
 
@@ -294,7 +300,7 @@ export default function ConfigModal({
                 {testStatus === "success" && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>¡Mensaje recibido en Telegram!</span>
+                    <span>¡Mensaje de prueba enviado con éxito!</span>
                   </div>
                 )}
                 {testStatus === "error" && (
