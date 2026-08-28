@@ -60,10 +60,10 @@ export default function KPICards({ data, hasSolar }) {
         textColor: isOffline ? "text-amber-500" : "text-purple-600 dark:text-purple-400",
       },
       {
-        title: "Estado Operativo Inversor",
-        value: isOffline ? "N/D" : `${data?.temperature || 38.5}`,
+        title: "Temperatura Inversor",
+        value: isOffline ? "N/D" : `${Number(data?.temperature || 38.5).toFixed(1)}`,
         unit: isOffline ? "" : "°C",
-        subtitle: isOffline ? "Servidor desconectado" : isNoAC ? "Modo Respaldo desde Baterías" : "Modo Normal (Red AC + Cargador)",
+        subtitle: isOffline ? "Servidor desconectado" : isNoAC ? "Modo Respaldo desde Baterías" : "Modo Normal (Red AC Activa)",
         icon: Cpu,
         badgeColor: isOffline
           ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"

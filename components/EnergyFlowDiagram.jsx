@@ -102,7 +102,7 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
               {pacKW} <span className="text-xs font-semibold text-subtle">kW AC</span>
             </div>
             <div className="flex items-center gap-2 text-[11px] font-mono font-semibold pt-2 border-t border-slate-700/30 w-full justify-center">
-              <span>Temp: <strong className="text-amber-600 dark:text-amber-400">{data?.temperature || 38.5}°C</strong></span>
+              <span>Temp: <strong className="text-amber-600 dark:text-amber-400">{Number(data?.temperature || 38.5).toFixed(1)}°C</strong></span>
             </div>
           </div>
 
@@ -177,7 +177,7 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
               {pacKW} <span className="text-xs font-bold text-subtle">kW SALIDA AC</span>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono font-semibold pt-2 border-t border-slate-700/30 w-full text-subtle">
-              <span>Temp: <strong className="text-amber-600 dark:text-amber-400">{data?.temperature || 38.5}°C</strong></span>
+              <span>Temp: <strong className="text-amber-600 dark:text-amber-400">{Number(data?.temperature || 38.5).toFixed(1)}°C</strong></span>
               <span>•</span>
               <span>Modo: <strong className={isNoAC ? "text-red-500 font-extrabold" : "text-emerald-500 font-extrabold"}>{isNoAC ? "Batería Respaldo" : "Red AC Normal"}</strong></span>
             </div>
