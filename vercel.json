@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/growatt",
-      "schedule": "*/2 * * * *"
-    }
-  ]
-}
