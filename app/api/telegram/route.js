@@ -125,14 +125,188 @@ async function getAllRegisteredChatIds(overrideChatId = null) {
   return ids;
 }
 
-// Retrieve latest telemetry from memory, file, KV, or fallback
+async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET", bodyParams = null) {
+  const domains = [
+    "https://openapi.growatt.com",
+    "https://openapi-us.growatt.com",
+    "https://openapi-cn.growatt.com"
+  ];
+  
+  let lastError = null;
+  
+  for (const domain of domains) {
+    try {
+      const url = new URL(`${domain}${path}`);
+      Object.keys(queryParams).forEach(k => url.searchParams.append(k, queryParams[k]));
+      
+      const options = {
+        method: method,
+        headers: {
+          "token": token,
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      };
+
+      if (bodyParams) {
+        const formBody = [];
+        for (const property in bodyParams) {
+          const encodedKey = encodeURIComponent(property);
+          const encodedValue = encodeURIComponent(bodyParams[property]);
+          formBody.push(encodedKey + "=" + encodedValue);
+        }
+        options.body = formBody.join("&");
+      }
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      let res;
+      try {
+        res = await fetch(url.toString(), { 
+          ...options, 
+          cache: "no-store",
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      
+      if (!res.ok) continue;
+      
+      const json = await res.json();
+      if (json && json.error_code === 0) {
+        return json.data || json;
+      } else {
+        lastError = json;
+      }
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  
+  throw lastError || new Error("Failed to connect to Growatt OpenAPI");
+}
+
+async function fetchLiveGrowattData(token) {
+  const plantListRes = await fetchGrowattOpenAPI(token, "/v1/plant/list");
+  const plants = plantListRes?.plants || plantListRes?.list || [];
+  if (plants.length === 0) {
+    throw new Error("No se encontraron plantas de energía en esta cuenta.");
+  }
+  
+  const plant = plants[0];
+  const plantId = plant.plant_id || plant.plantId;
+
+  const deviceListRes = await fetchGrowattOpenAPI(token, "/v1/device/list", { plant_id: plantId });
+  const devices = deviceListRes?.devices || deviceListRes?.list || [];
+  if (devices.length === 0) {
+    throw new Error("No se encontraron inversores o dispositivos de almacenamiento.");
+  }
+
+  const storageDevice = devices.find(d => d.type === 2 || d.type === "storage" || d.model?.toLowerCase().includes("sph") || d.model?.toLowerCase().includes("spa"));
+  const inverterDevice = devices.find(d => d.type === 1 || d.type === "inverter") || devices[0];
+
+  let batterySOC = 100;
+  let batteryVoltage = 53.3;
+  let temperature = 38.5;
+  let vac = 230;
+  let fac = 60.0;
+  let pac = 0;
+  let houseLoad = 800;
+
+  if (storageDevice) {
+    try {
+      const storageData = await fetchGrowattOpenAPI(token, "/v1/device/storage/storage_last_data", {}, "POST", {
+        storage_sn: storageDevice.device_sn || storageDevice.deviceSn
+      });
+      
+      if (storageData) {
+        batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || storageData.batterySoc || 100);
+        batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : (storageData.batteryVoltage || 53.3);
+        temperature = storageData.invTemperature || storageData.temperature || storageData.temp || 38.5;
+        vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
+        fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : (storageData.fGrid ? Number(Number(storageData.fGrid).toFixed(2)) : 60.0);
+        pac = storageData.outPutPower || storageData.pAcOutPut || 0;
+        houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || storageData.pAcOutPut || 800;
+      }
+    } catch (storageErr) {
+      console.warn("Could not query detailed storage data in telegram route", storageErr);
+    }
+  } else if (inverterDevice) {
+    try {
+      const inverterData = await fetchGrowattOpenAPI(token, "/v1/device/inverter/inverter_last_data", {}, "POST", {
+        inverter_sn: inverterDevice.device_sn || inverterDevice.deviceSn
+      });
+      if (inverterData) {
+        vac = inverterData.vac1 !== undefined ? Number(Number(inverterData.vac1).toFixed(1)) : 230;
+        fac = inverterData.fac !== undefined ? Number(Number(inverterData.fac).toFixed(2)) : 60.0;
+        pac = inverterData.pac || 0;
+        temperature = inverterData.temp || 38.5;
+      }
+    } catch (invErr) {
+      console.warn("Could not query inverter data in telegram route", invErr);
+    }
+  }
+
+  return {
+    plantName: plant.name || plant.plant_name || "Residencial Sr. Nelson",
+    inverterModel: inverterDevice.model || "Growatt Inverter UPS",
+    serialNumber: inverterDevice.device_sn || inverterDevice.deviceSn || "AOE9CJC058",
+    status: vac === 0 ? "CORTE DE LUZ" : "NORMAL",
+    isOffline: false,
+    vac,
+    fac,
+    pac,
+    batterySOC,
+    batteryVoltage,
+    houseLoad,
+    temperature,
+    cachedAt: Date.now(),
+    lastUpdated: new Date().toISOString()
+  };
+}
+
+// Retrieve latest telemetry from memory, file, KV, or directly live from Growatt OpenAPI
 async function getLatestTelemetry() {
-  // 1. From global in-memory cache
-  if (global.lastGrowattTelemetry) {
+  const nowMs = Date.now();
+
+  // 1. From global in-memory cache if fresh (less than 5 minutes old)
+  if (global.lastGrowattTelemetry && global.lastGrowattTelemetryTime && (nowMs - global.lastGrowattTelemetryTime < 300000)) {
     return global.lastGrowattTelemetry;
   }
 
-  // 2. From local file if exists
+  // 2. From local file if exists and fresh
+  try {
+    if (fs.existsSync(telemetryFilePath)) {
+      const fileData = JSON.parse(fs.readFileSync(telemetryFilePath, "utf8"));
+      if (fileData && fileData.cachedAt && (nowMs - fileData.cachedAt < 300000)) {
+        global.lastGrowattTelemetry = fileData;
+        global.lastGrowattTelemetryTime = fileData.cachedAt;
+        return fileData;
+      }
+    }
+  } catch (e) {}
+
+  // 3. Attempt direct live fetch from Growatt OpenAPI
+  const token = (process.env.GROWATT_API_TOKEN || "75433vd880684dfp20nav03t8zb10xp1").trim();
+  try {
+    const liveData = await fetchLiveGrowattData(token);
+    if (liveData) {
+      global.lastGrowattTelemetry = liveData;
+      global.lastGrowattTelemetryTime = nowMs;
+      try {
+        fs.writeFileSync(telemetryFilePath, JSON.stringify(liveData, null, 2), "utf8");
+      } catch (e) {}
+      return liveData;
+    }
+  } catch (err) {
+    console.warn("[Telegram /estado] Live fetch from Growatt OpenAPI failed, using cached state:", err.message);
+  }
+
+  // 4. Fallback to cached memory or file even if older
+  if (global.lastGrowattTelemetry) {
+    return global.lastGrowattTelemetry;
+  }
   try {
     if (fs.existsSync(telemetryFilePath)) {
       const fileData = JSON.parse(fs.readFileSync(telemetryFilePath, "utf8"));
@@ -140,20 +314,7 @@ async function getLatestTelemetry() {
     }
   } catch (e) {}
 
-  // 3. From Vercel KV
-  if (kvUrl && kvToken) {
-    try {
-      const res = await fetch(`${kvUrl}/get/growatt_telemetry_latest`, {
-        headers: { Authorization: `Bearer ${kvToken}` }
-      });
-      const json = await res.json();
-      if (json && json.result) {
-        return typeof json.result === "string" ? JSON.parse(json.result) : json.result;
-      }
-    } catch (e) {}
-  }
-
-  // 4. Default baseline state if not yet refreshed
+  // 5. Fallback baseline state
   return {
     plantName: "Residencial Sr. Nelson",
     inverterModel: "Growatt Inverter UPS",

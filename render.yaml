@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: growatt-monitoring
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: GROWATT_API_TOKEN
+        value: 75433vd880684dfp20nav03t8zb10xp1
+      - key: TELEGRAM_BOT_TOKEN
+        value: 8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0
+      - key: NODE_ENV
+        value: production
