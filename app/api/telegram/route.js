@@ -5,6 +5,7 @@ import path from "path";
 export const dynamic = "force-dynamic";
 
 const chatIdsFilePath = path.join(process.cwd(), "chat_ids.json");
+const telemetryFilePath = path.join(process.cwd(), "telemetry_latest.json");
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -124,6 +125,141 @@ async function getAllRegisteredChatIds(overrideChatId = null) {
   return ids;
 }
 
+// Retrieve latest telemetry from memory, file, KV, or fallback
+async function getLatestTelemetry() {
+  // 1. From global in-memory cache
+  if (global.lastGrowattTelemetry) {
+    return global.lastGrowattTelemetry;
+  }
+
+  // 2. From local file if exists
+  try {
+    if (fs.existsSync(telemetryFilePath)) {
+      const fileData = JSON.parse(fs.readFileSync(telemetryFilePath, "utf8"));
+      if (fileData) return fileData;
+    }
+  } catch (e) {}
+
+  // 3. From Vercel KV
+  if (kvUrl && kvToken) {
+    try {
+      const res = await fetch(`${kvUrl}/get/growatt_telemetry_latest`, {
+        headers: { Authorization: `Bearer ${kvToken}` }
+      });
+      const json = await res.json();
+      if (json && json.result) {
+        return typeof json.result === "string" ? JSON.parse(json.result) : json.result;
+      }
+    } catch (e) {}
+  }
+
+  // 4. Default baseline state if not yet refreshed
+  return {
+    plantName: "Residencial Sr. Nelson",
+    inverterModel: "Growatt Inverter UPS",
+    serialNumber: "AOE9CJC058",
+    status: "NORMAL",
+    isOffline: false,
+    vac: 230.0,
+    fac: 60.0,
+    pac: 0,
+    batterySOC: 100,
+    batteryVoltage: 53.3,
+    houseLoad: 800,
+    temperature: 38.5,
+    lastUpdated: new Date().toISOString()
+  };
+}
+
+function formatStatusReport(data) {
+  const isOffline = data?.isOffline || false;
+  const plantName = escapeHtml(data?.plantName || "Residencial Sr. Nelson");
+  const model = escapeHtml(data?.inverterModel || "Growatt Inverter UPS");
+  const sn = escapeHtml(data?.serialNumber || "AOE9CJC058");
+
+  if (isOffline) {
+    return (
+      `⚡ <b>ESTADO GENERAL DEL SISTEMA</b>\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `🏠 <b>Planta:</b> ${plantName}\n` +
+      `📡 <b>Conexión Inversor:</b> 🔴 <b>DESCONECTADO (Offline)</b>\n` +
+      `⚠️ <b>Detalle:</b> Módulo Wi-Fi sin enlace con servidores Growatt.\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `🔌 <b>Red Eléctrica (AC):</b> ⚠️ Sin telemetría en vivo\n` +
+      `🔋 <b>Batería:</b> ⚠️ Sin telemetría en vivo\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `🕒 <i>El sistema reintentará la conexión automáticamente en el siguiente ciclo.</i>`
+    );
+  }
+
+  const vac = data?.vac !== null && data?.vac !== undefined ? Number(data.vac) : 230;
+  const fac = data?.fac !== null && data?.fac !== undefined ? Number(data.fac) : 60;
+  const soc = data?.batterySOC !== null && data?.batterySOC !== undefined ? Math.round(data.batterySOC) : 100;
+  const vbat = data?.batteryVoltage !== null && data?.batteryVoltage !== undefined ? Number(data.batteryVoltage).toFixed(1) : "53.3";
+  const load = data?.houseLoad !== null && data?.houseLoad !== undefined ? Math.round(data.houseLoad) : 800;
+  const temp = data?.temperature !== null && data?.temperature !== undefined ? Number(data.temperature).toFixed(1) : "38.5";
+
+  // 1. Estado de la Red AC
+  let gridStatus = "";
+  if (vac === 0) {
+    gridStatus = `🚨 <b>SIN SUMINISTRO (CORTE DE LUZ • 0 V)</b>`;
+  } else if (vac < 195) {
+    gridStatus = `⚠️ <b>Bajo Voltaje (${vac} V • ${fac} Hz)</b>`;
+  } else if (vac > 250) {
+    gridStatus = `🚨 <b>Sobrevoltaje (${vac} V • ${fac} Hz)</b>`;
+  } else {
+    gridStatus = `🟢 <b>Conectada y Estable (${vac} V • ${fac} Hz)</b>`;
+  }
+
+  // 2. Estado de la Batería
+  let batIcon = "🔋";
+  let batLabel = "";
+  if (soc <= 30) {
+    batIcon = "🔴";
+    batLabel = `<b>${soc}% (Nivel Crítico)</b>`;
+  } else if (soc <= 60) {
+    batIcon = "🟠";
+    batLabel = `<b>${soc}% (Nivel Bajo)</b>`;
+  } else {
+    batIcon = "🟢";
+    batLabel = `<b>${soc}% (Óptimo)</b>`;
+  }
+
+  // 3. Modo de Operación
+  let modeDesc = "";
+  if (vac === 0) {
+    modeDesc = `🔋 <b>Respaldo UPS Activo (Suministrando desde Batería)</b>`;
+  } else {
+    modeDesc = `⚡ <b>Red Comercial Activa (Bypass / Cargando Batería)</b>`;
+  }
+
+  const timeStr = new Date().toLocaleTimeString("es-ES", {
+    timeZone: "America/Caracas",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+
+  return (
+    `⚡ <b>ESTADO GENERAL DEL SISTEMA</b>\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🏠 <b>Planta:</b> ${plantName}\n` +
+    `📡 <b>Conexión Inversor:</b> 🟢 <b>En Línea (Online)</b>\n` +
+    `📟 <b>Dispositivo:</b> ${model} (<code>${sn}</code>)\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🔌 <b>Red Comercial (AC):</b>\n` +
+    `   └ ${gridStatus}\n\n` +
+    `${batIcon} <b>Porcentaje de Batería:</b> ${batLabel}\n` +
+    `⚡ <b>Voltaje de Batería:</b> <code>${vbat} V</code>\n` +
+    `🏠 <b>Consumo Actual Casa:</b> <code>${load} W</code>\n` +
+    `🌡️ <b>Temperatura Inversor:</b> <code>${temp} °C</code>\n` +
+    `🔄 <b>Modo de Operación:</b>\n` +
+    `   └ ${modeDesc}\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `🕒 <i>Lectura: ${timeStr} (Hora Vzla)</i>`
+  );
+}
+
 // GET: Bot diagnostics & Webhook status check
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -195,8 +331,8 @@ export async function POST(request) {
         global.vercelChatIds.push(chatId);
       }
 
-      // 3. Send automatic welcome / response message
-      if (text.startsWith("/start") || isNewSubscriber) {
+      // 3. Process commands and messages
+      if (text.startsWith("/start") || (isNewSubscriber && !text.startsWith("/estado") && !text.startsWith("/status"))) {
         const welcomeText =
           `🔌 <b>¡Monitoreo Growatt Activado!</b>\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
@@ -207,7 +343,7 @@ export async function POST(request) {
           `• 🔋 <b>Nivel de baterías</b> (Advertencia de Batería Baja y Crítica)\n` +
           `• ⚠️ <b>Sobrevoltaje o anomalías</b> del inversor\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
-          `<i>No requieres configuración adicional. Este chat recibirá las alertas de forma inmediata.</i>`;
+          `💡 <i>Puedes escribir <b>/estado</b> en cualquier momento para consultar el voltaje, la red y la batería en vivo.</i>`;
 
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
@@ -219,12 +355,16 @@ export async function POST(request) {
           })
         });
       } else if (text.startsWith("/status") || text.startsWith("/estado")) {
+        // Fetch freshest telemetry and reply with full status report
+        const telemetry = await getLatestTelemetry();
+        const statusReport = formatStatusReport(telemetry);
+
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `⚡ <b>Estado del Bot:</b> Activo y operativo.\nTu chat (<code>${chatId}</code>) está registrado para recibir todas las alertas en tiempo real.`,
+            text: statusReport,
             parse_mode: "HTML"
           })
         });
@@ -234,17 +374,21 @@ export async function POST(request) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `ℹ️ <b>Ayuda - Monitoreo Growatt</b>\n\nEste bot envía alertas automáticas cuando ocurren eventos en el sistema eléctrico del inversor Growatt.\n\n<b>Comandos:</b>\n• /start - Iniciar o renovar suscripción\n• /estado - Verificar estado de suscripción\n• /ayuda - Ver este mensaje`,
+            text: `ℹ️ <b>Ayuda - Monitoreo Growatt</b>\n\nEste bot envía alertas automáticas cuando ocurren eventos en el sistema eléctrico del inversor Growatt.\n\n<b>Comandos disponibles:</b>\n• /estado - Ver voltaje de red AC, conexión inversor, % y voltaje de batería en vivo\n• /start - Iniciar o verificar suscripción\n• /ayuda - Mostrar este mensaje de ayuda`,
             parse_mode: "HTML"
           })
         });
       } else if (text) {
+        // If the user sends any other text, acknowledge and provide /estado shortcut
+        const telemetry = await getLatestTelemetry();
+        const statusReport = formatStatusReport(telemetry);
+
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `✅ <b>Chat Suscrito</b> (ID: <code>${chatId}</code>)\nTu chat está activo para recibir todas las alertas del inversor.`,
+            text: statusReport,
             parse_mode: "HTML"
           })
         });

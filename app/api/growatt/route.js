@@ -14,9 +14,32 @@ let lastTelemetryTime = 0;
 let lastOfflineTime = 0;
 
 const chatIdsFilePath = path.join(process.cwd(), "chat_ids.json");
+const telemetryFilePath = path.join(process.cwd(), "telemetry_latest.json");
 
 const kvUrl = process.env.KV_REST_API_URL;
 const kvToken = process.env.KV_REST_API_TOKEN;
+
+function saveLatestTelemetry(data) {
+  if (!data) return;
+  try {
+    lastGrowattTelemetry = data;
+    lastTelemetryTime = Date.now();
+    global.lastGrowattTelemetry = data;
+    global.lastGrowattTelemetryTime = Date.now();
+    try {
+      fs.writeFileSync(telemetryFilePath, JSON.stringify(data, null, 2), "utf8");
+    } catch (e) {}
+    if (kvUrl && kvToken) {
+      fetch(`${kvUrl}/set/growatt_telemetry_latest`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${kvToken}` },
+        body: JSON.stringify(data)
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.error("Error saving latest telemetry:", err.message);
+  }
+}
 
 function escapeHtml(str) {
   if (!str) return "";
@@ -495,8 +518,7 @@ export async function GET(request) {
       const realTelemetry = await getRealGrowattTelemetry(token, config);
       if (realTelemetry) {
         // Save to cache on successful load
-        lastGrowattTelemetry = realTelemetry;
-        lastTelemetryTime = nowMs;
+        saveLatestTelemetry(realTelemetry);
 
         // Trigger server-side alerts check & telegram notifier
         await handleBackendNotifications(realTelemetry, tgOptions);
@@ -541,6 +563,8 @@ export async function GET(request) {
         hasCriticalAlert: false
       };
 
+      saveLatestTelemetry(offlineData);
+
       // Trigger server-side alerts check & telegram notifier ONLY for wifi_offline!
       await handleBackendNotifications(offlineData, tgOptions);
 
@@ -554,6 +578,7 @@ export async function GET(request) {
 
   // Default to live high-fidelity simulation
   const liveTelemetry = generateLiveTelemetry(token, config);
+  saveLatestTelemetry(liveTelemetry);
   // Trigger server-side alerts check & telegram notifier
   await handleBackendNotifications(liveTelemetry, tgOptions);
   
