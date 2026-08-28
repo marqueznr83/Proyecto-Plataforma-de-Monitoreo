@@ -446,8 +446,8 @@ export async function GET(request) {
   // If not in demo mode, attempt to connect to the real Growatt OpenAPI
   if (!isDemoMode && token && token !== "demo") {
     const nowMs = Date.now();
-    // 1. Return cached offline state if within 2 minutes to prevent hammering Growatt when down
-    if (nowMs - lastOfflineTime < 120000) {
+    // 1. Return cached offline state if within 5 minutes to prevent hammering Growatt when down
+    if (nowMs - lastOfflineTime < 300000) {
       return NextResponse.json({
         source: "growatt_openapi_offline_cached",
         success: true,
@@ -481,8 +481,8 @@ export async function GET(request) {
       });
     }
 
-    // 2. Return cached telemetry if requested within 2 minutes (120,000 ms)
-    if (lastGrowattTelemetry && (nowMs - lastTelemetryTime < 120000)) {
+    // 2. Return cached telemetry if requested within 5 minutes (300,000 ms)
+    if (lastGrowattTelemetry && (nowMs - lastTelemetryTime < 300000)) {
       return NextResponse.json({
         source: "growatt_openapi_cached",
         success: true,
