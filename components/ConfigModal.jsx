@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Sparkles, Sliders, Zap, BatteryCharging, Sun, Send, Bell, CheckCircle2, AlertCircle } from "lucide-react";
+import { X, Sparkles, Zap, BatteryCharging, Sun, Send, Bell, CheckCircle2, AlertCircle, RefreshCw, MessageSquare } from "lucide-react";
 
 export default function ConfigModal({
   isOpen,
@@ -14,15 +14,15 @@ export default function ConfigModal({
   // Alarm threshold state
   const [minVac, setMinVac] = useState(alarmConfig?.minVac || 195);
   const [maxVac, setMaxVac] = useState(alarmConfig?.maxVac || 250);
-  const [lowBat, setLowBat] = useState(alarmConfig?.lowBat || 25);
-  const [critBat, setCritBat] = useState(alarmConfig?.critBat || 15);
+  const [lowBat, setLowBat] = useState(alarmConfig?.lowBat || 60);
+  const [critBat, setCritBat] = useState(alarmConfig?.critBat || 30);
   const [noAC, setNoAC] = useState(alarmConfig?.noAC || false);
   const [hasSolar, setHasSolar] = useState(alarmConfig?.hasSolar || false);
   const [testBatSOC, setTestBatSOC] = useState(alarmConfig?.testBatSOC ?? 50);
 
   // Telegram state
   const [tgToken, setTgToken] = useState(telegramConfig?.botToken || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0");
-  const [tgChatId, setTgChatId] = useState(telegramConfig?.chatId || "-1004366083322");
+  const [tgChatId, setTgChatId] = useState(telegramConfig?.chatId || "201650052");
   const [testStatus, setTestStatus] = useState(null); // null | 'loading' | 'success' | 'error'
   const [testErrorMsg, setTestErrorMsg] = useState("");
 
@@ -32,15 +32,15 @@ export default function ConfigModal({
       if (alarmConfig) {
         setMinVac(alarmConfig.minVac || 195);
         setMaxVac(alarmConfig.maxVac || 250);
-        setLowBat(alarmConfig.lowBat || 25);
-        setCritBat(alarmConfig.critBat || 15);
+        setLowBat(alarmConfig.lowBat || 60);
+        setCritBat(alarmConfig.critBat || 30);
         setNoAC(alarmConfig.noAC || false);
         setHasSolar(alarmConfig.hasSolar || false);
         setTestBatSOC(alarmConfig.testBatSOC ?? 50);
       }
       if (telegramConfig) {
         setTgToken(telegramConfig.botToken || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0");
-        setTgChatId(telegramConfig.chatId || "-1004366083322");
+        setTgChatId(telegramConfig.chatId || "201650052");
       }
       setTestStatus(null);
       setTestErrorMsg("");
@@ -60,14 +60,14 @@ export default function ConfigModal({
       testBatSOC
     });
     onUpdateTelegramConfig({
-      botToken: tgToken,
-      chatId: tgChatId
+      botToken: tgToken.trim(),
+      chatId: tgChatId.trim()
     });
     onClose();
   };
 
   const handleSendTestMessage = async () => {
-    if (!tgToken || !tgChatId) {
+    if (!tgToken.trim() || !tgChatId.trim()) {
       setTestStatus("error");
       setTestErrorMsg("Por favor completa el Bot Token y Chat ID antes de probar.");
       return;
@@ -83,8 +83,8 @@ export default function ConfigModal({
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          botToken: tgToken,
-          chatId: tgChatId,
+          botToken: tgToken.trim(),
+          chatId: tgChatId.trim(),
           message: "<b>🔔 MONITOREO GROWATT</b>\n" +
                    "━━━━━━━━━━━━━━━━━━\n" +
                    "<blockquote>¡Mensaje de prueba exitoso!\n\n" +
@@ -103,7 +103,7 @@ export default function ConfigModal({
       }
     } catch (err) {
       setTestStatus("error");
-      setTestErrorMsg("Error de conexión local: " + err.message);
+      setTestErrorMsg("Error de conexión: " + err.message);
     }
   };
 
@@ -185,9 +185,127 @@ export default function ConfigModal({
             </div>
           </div>
 
+          {/* 2. Umbrales de Batería BMS */}
+          <div className="p-4.5 rounded-xl theme-well border border-slate-700/40 dark:border-slate-800 space-y-3.5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <BatteryCharging className="w-5 h-5 text-emerald-500" />
+              <span className="text-xs font-extrabold uppercase tracking-wider">Umbrales de Batería (SOC %)</span>
+            </div>
 
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-amber-600 dark:text-amber-400 mb-1">
+                  Batería Baja (Aviso 🟡):
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={lowBat}
+                    onChange={(e) => setLowBat(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 font-mono font-bold text-amber-600 dark:text-amber-400"
+                  />
+                  <span className="font-bold text-subtle">%</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-red-600 dark:text-red-400 mb-1">
+                  Batería Crítica (Crítico 🔴):
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={critBat}
+                    onChange={(e) => setCritBat(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 font-mono font-bold text-red-600 dark:text-red-400"
+                  />
+                  <span className="font-bold text-subtle">%</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
+          {/* 3. Configuración de Telegram Bot */}
+          <div className="p-4.5 rounded-xl theme-well border border-sky-500/30 dark:border-sky-500/20 space-y-3.5 shadow-sm bg-sky-500/5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Send className="w-5 h-5 text-sky-500" />
+                <span className="text-xs font-extrabold uppercase tracking-wider text-sky-600 dark:text-sky-400">Notificaciones de Telegram</span>
+              </div>
+              <a
+                href="https://t.me/tlgnelson_bot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-bold text-sky-500 hover:underline flex items-center gap-1"
+              >
+                <span>@tlgnelson_bot</span>
+              </a>
+            </div>
 
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-subtle mb-1">
+                  Telegram Bot Token:
+                </label>
+                <input
+                  type="text"
+                  value={tgToken}
+                  onChange={(e) => setTgToken(e.target.value)}
+                  placeholder="8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0"
+                  className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 font-mono text-[11px]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-subtle mb-1">
+                  Chat ID / IDs destinatarios (separados por coma):
+                </label>
+                <input
+                  type="text"
+                  value={tgChatId}
+                  onChange={(e) => setTgChatId(e.target.value)}
+                  placeholder="8003576551, 5326442"
+                  className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 font-mono text-[11px]"
+                />
+                <span className="text-[10px] text-subtle block mt-1">
+                  Puedes enviar <code>/start</code> al bot o consultar con <code>@userinfobot</code> para obtener tu ID numérico.
+                </span>
+              </div>
+
+              {/* Interactive Test Button & Status */}
+              <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSendTestMessage}
+                  disabled={testStatus === "loading"}
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-sky-500 hover:bg-sky-600 text-white flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-sm"
+                >
+                  {testStatus === "loading" ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5 -rotate-45" />
+                  )}
+                  <span>{testStatus === "loading" ? "Enviando prueba..." : "Enviar Notificación de Prueba"}</span>
+                </button>
+
+                {testStatus === "success" && (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>¡Mensaje recibido en Telegram!</span>
+                  </div>
+                )}
+                {testStatus === "error" && (
+                  <div className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400 font-semibold">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span className="truncate max-w-xs">{testErrorMsg}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* 4. Paneles Solares Toggle */}
           <div className="p-4 rounded-xl theme-well border border-slate-700/40 dark:border-slate-800 flex items-center justify-between shadow-sm">
@@ -239,3 +357,4 @@ export default function ConfigModal({
     </div>
   );
 }
+

@@ -25,7 +25,7 @@ async function getKvChatIds() {
     });
     const json = await res.json();
     if (json && json.result) {
-      return JSON.parse(json.result);
+      return typeof json.result === "string" ? JSON.parse(json.result) : json.result;
     }
   } catch (e) {
     console.error("KV read error:", e.message);
@@ -51,11 +51,50 @@ if (!global.vercelChatIds) {
   global.vercelChatIds = [];
 }
 
+// GET: Bot diagnostics & Webhook status check
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const botToken = (searchParams.get("token") || process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0").trim();
+
+  try {
+    const meRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+    const meData = await meRes.json();
+
+    const whRes = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
+    const whData = await whRes.json();
+
+    let localChatIds = [];
+    try {
+      if (fs.existsSync(chatIdsFilePath)) {
+        localChatIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
+      }
+    } catch (e) {}
+
+    const kvChatIds = await getKvChatIds();
+
+    return NextResponse.json({
+      success: meData.ok,
+      bot: meData.result || null,
+      webhook: whData.result || null,
+      registeredChatIds: {
+        env: process.env.TELEGRAM_CHAT_ID ? process.env.TELEGRAM_CHAT_ID.split(/[,\s]+/) : [],
+        localFile: localChatIds,
+        kv: kvChatIds
+      }
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { success: false, error: "Error al conectar con Telegram API: " + err.message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
-    const defaultChatId = process.env.TELEGRAM_CHAT_ID || "8003576551";
+    const botToken = (process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0").trim();
+    const defaultChatId = (process.env.TELEGRAM_CHAT_ID || "8003576551").trim();
 
     // CASE 1: Incoming Telegram Webhook Update (e.g., user clicked /start)
     if (body.update_id && body.message && body.message.chat) {
@@ -74,19 +113,19 @@ export async function POST(request) {
         // Load existing IDs from Vercel KV
         const kvIds = await getKvChatIds();
         for (const kid of kvIds) {
-          const sId = String(kid);
-          if (!chatIds.includes(sId)) {
+          const sId = String(kid).trim();
+          if (sId && !chatIds.includes(sId)) {
             chatIds.push(sId);
           }
         }
 
-        const sChatId = String(chatId);
-        if (!chatIds.includes(sChatId)) {
+        const sChatId = String(chatId).trim();
+        if (sChatId && !chatIds.includes(sChatId)) {
           chatIds.push(sChatId);
           saveChatIds(chatIds);
           await saveKvChatIds(chatIds);
         }
-        if (!global.vercelChatIds.includes(sChatId)) {
+        if (sChatId && !global.vercelChatIds.includes(sChatId)) {
           global.vercelChatIds.push(sChatId);
         }
 
@@ -96,21 +135,21 @@ export async function POST(request) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🔌 <b>¡Monitoreo Nelson Márquez Activado!</b>\n\nHola <b>${chat.first_name || "Usuario"}</b>, has iniciado tu conexión al bot de la Planta Nelson Márquez.\n\nRecibirás las notificaciones de corte de luz y nivel de batería directamente en este chat privado.`,
+            text: `🔌 <b>¡Monitoreo Nelson Márquez Activado!</b>\n\nHola <b>${chat.first_name || "Usuario"}</b>, has vinculado exitosamente tu chat al sistema de alertas de la Planta Nelson Márquez.\n\nRecibirás las notificaciones de cortes de red y estado de baterías directamente aquí.`,
             parse_mode: "HTML"
           })
         });
 
-        return NextResponse.json({ success: true, message: "Chat ID registered" });
+        return NextResponse.json({ success: true, message: "Chat ID registrado exitosamente", chatId: sChatId });
       }
 
       return NextResponse.json({ success: true });
     }
 
-    // CASE 2: Proxy message send request (original behavior)
+    // CASE 2: Proxy message send request (e.g., modal test button)
     const { message, botToken: bodyToken, chatId: bodyChatId } = body;
-    const activeToken = bodyToken || botToken;
-    const activeChatId = bodyChatId || defaultChatId;
+    const activeToken = (bodyToken || botToken).trim();
+    const targetChatIds = (bodyChatId || defaultChatId).toString().split(/[,\s]+/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
 
     if (!message) {
       return NextResponse.json(
@@ -119,26 +158,68 @@ export async function POST(request) {
       );
     }
 
-    const tgUrl = `https://api.telegram.org/bot${activeToken}/sendMessage`;
-    const tgRes = await fetch(tgUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        chat_id: activeChatId,
-        text: message,
-        parse_mode: "HTML",
-      }),
-    });
-
-    const tgData = await tgRes.json();
-
-    if (tgRes.ok && tgData.ok) {
-      return NextResponse.json({ success: true, data: tgData.result });
-    } else {
+    if (targetChatIds.length === 0) {
       return NextResponse.json(
-        { success: false, error: tgData.description || "Error al enviar mensaje a Telegram." },
+        { success: false, error: "No se proporcionó ningún Chat ID válido." },
+        { status: 400 }
+      );
+    }
+
+    const results = [];
+    let anySuccess = false;
+
+    for (const chatId of targetChatIds) {
+      const tgUrl = `https://api.telegram.org/bot${activeToken}/sendMessage`;
+      let tgRes = await fetch(tgUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+          parse_mode: "HTML",
+        }),
+      });
+
+      let tgData = await tgRes.json();
+
+      // Fallback: If Telegram rejected HTML entities, strip tags and send as plain text
+      if (!tgRes.ok && tgData?.description && tgData.description.includes("can't parse entities")) {
+        console.warn(`[Telegram Proxy] Fallo de parseo HTML para ${chatId}. Reintentando en texto plano...`);
+        const plainText = message.replace(/<[^>]+>/g, "");
+        tgRes = await fetch(tgUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: plainText
+          }),
+        });
+        tgData = await tgRes.json();
+      }
+
+      if (tgRes.ok && tgData.ok) {
+        anySuccess = true;
+        results.push({ chatId, success: true, messageId: tgData.result.message_id });
+      } else {
+        results.push({
+          chatId,
+          success: false,
+          errorCode: tgData.error_code || tgRes.status,
+          error: tgData.description || "Error desconocido al enviar a Telegram"
+        });
+      }
+    }
+
+    if (anySuccess) {
+      return NextResponse.json({ success: true, results });
+    } else {
+      const firstError = results[0]?.error || "Error al enviar mensaje a Telegram.";
+      return NextResponse.json(
+        { success: false, error: firstError, details: results },
         { status: 400 }
       );
     }

@@ -31,7 +31,7 @@ export default function Home() {
   // Telegram bot configuration
   const [telegramConfig, setTelegramConfig] = useState({
     botToken: "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0",
-    chatId: "-1004366083322"
+    chatId: "201650052"
   });
 
   // Load Telegram config from localStorage on mount
@@ -39,7 +39,12 @@ export default function Home() {
     const savedTg = localStorage.getItem("growatt_telegram_config");
     if (savedTg) {
       try {
-        setTelegramConfig(JSON.parse(savedTg));
+        const parsed = JSON.parse(savedTg);
+        // Replace outdated invalid default chat ID if present
+        if (parsed.chatId === "-1004366083322") {
+          parsed.chatId = "201650052";
+        }
+        setTelegramConfig(parsed);
       } catch (e) {
         console.error("Error al cargar la configuración de Telegram", e);
       }
@@ -66,6 +71,13 @@ export default function Home() {
         batSOC: alarmConfig.testBatSOC
       });
 
+      if (telegramConfig.botToken) {
+        query.append("tgToken", telegramConfig.botToken);
+      }
+      if (telegramConfig.chatId) {
+        query.append("tgChatId", telegramConfig.chatId);
+      }
+
       const res = await fetch(`/api/growatt?${query.toString()}`);
       const json = await res.json();
       if (json.success && json.data) {
@@ -77,7 +89,7 @@ export default function Home() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [token, isDemoMode, alarmConfig]);
+  }, [token, isDemoMode, alarmConfig, telegramConfig]);
 
   useEffect(() => {
     fetchTelemetry();

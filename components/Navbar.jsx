@@ -5,7 +5,7 @@ import { Sun, RefreshCw, Settings, Zap, Bell, AlertTriangle, ShieldAlert, CheckC
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }) {
-  const [countdown, setCountdown] = useState(300);
+  const [countdown, setCountdown] = useState(120);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
   const dropdownRef = useRef(null);
@@ -15,7 +15,7 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
       setCountdown((prev) => {
         if (prev <= 1) {
           onRefresh();
-          return 300;
+          return 120;
         }
         return prev - 1;
       });
@@ -41,11 +41,6 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
       setDismissedAlerts([]);
     }
   }, [alerts.length, dismissedAlerts.length]);
-
-  const handleManualRefresh = () => {
-    setCountdown(300);
-    onRefresh();
-  };
 
   const handleDismissAlert = (id) => {
     setDismissedAlerts((prev) => [...prev, id]);
@@ -235,16 +230,14 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
           {/* Theme Toggle Button */}
           <ThemeToggle />
 
-          {/* Auto Refresh & Counter */}
-          <button
-            onClick={handleManualRefresh}
-            disabled={isRefreshing}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg theme-well hover:opacity-80 transition-all active:scale-95 disabled:opacity-50 shadow-sm border border-slate-700/20"
-            title="Actualizar datos ahora"
+          {/* Auto Refresh & Counter (Fijo cada 2 minutos, no interactivo) */}
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg theme-well shadow-sm border border-slate-700/20 cursor-default select-none"
+            title="Actualización automática periódica cada 2 minutos"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-amber-500 ${isRefreshing ? "animate-spin" : ""}`} />
             <span className="font-mono text-amber-500 font-extrabold">{countdown}s</span>
-          </button>
+          </div>
 
           {/* Telegram Bot Button */}
           <a

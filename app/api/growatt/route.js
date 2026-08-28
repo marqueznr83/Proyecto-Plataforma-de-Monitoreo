@@ -18,23 +18,42 @@ const chatIdsFilePath = path.join(process.cwd(), "chat_ids.json");
 const kvUrl = process.env.KV_REST_API_URL;
 const kvToken = process.env.KV_REST_API_TOKEN;
 
-async function getRegisteredChatIds() {
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function getRegisteredChatIds(overrideChatId = null) {
   let ids = [];
   
-  // 1. Read from environment variable first (comma-separated list)
+  // 1. Explicit override passed from request query/body
+  if (overrideChatId) {
+    const overrideList = String(overrideChatId).split(/[,\s]+/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    for (const id of overrideList) {
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+
+  // 2. Read from environment variable (comma or space separated)
   const envChatId = process.env.TELEGRAM_CHAT_ID;
   if (envChatId) {
-    ids = envChatId.split(",").map(s => s.trim()).filter(Boolean);
+    const envList = envChatId.split(/[,\s]+/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    for (const id of envList) {
+      if (!ids.includes(id)) ids.push(id);
+    }
   }
   
-  // 2. Load from local file if exists (for local testing persistent storage)
+  // 3. Load from local file if exists (for local testing persistent storage)
   try {
     if (fs.existsSync(chatIdsFilePath)) {
       const fileIds = JSON.parse(fs.readFileSync(chatIdsFilePath, "utf8"));
       if (Array.isArray(fileIds)) {
         for (const fileId of fileIds) {
-          const sId = String(fileId);
-          if (!ids.includes(sId)) {
+          const sId = String(fileId).trim();
+          if (sId && !ids.includes(sId)) {
             ids.push(sId);
           }
         }
@@ -44,7 +63,7 @@ async function getRegisteredChatIds() {
     console.error("Error reading chat_ids.json:", e.message);
   }
 
-  // 3. Load from Vercel KV if available
+  // 4. Load from Vercel KV if available
   if (kvUrl && kvToken) {
     try {
       const kvRes = await fetch(`${kvUrl}/get/chat_ids`, {
@@ -52,11 +71,11 @@ async function getRegisteredChatIds() {
       });
       const kvJson = await kvRes.json();
       if (kvJson && kvJson.result) {
-        const kvIds = JSON.parse(kvJson.result);
+        const kvIds = typeof kvJson.result === "string" ? JSON.parse(kvJson.result) : kvJson.result;
         if (Array.isArray(kvIds)) {
           for (const kvId of kvIds) {
-            const sId = String(kvId);
-            if (!ids.includes(sId)) {
+            const sId = String(kvId).trim();
+            if (sId && !ids.includes(sId)) {
               ids.push(sId);
             }
           }
@@ -67,17 +86,17 @@ async function getRegisteredChatIds() {
     }
   }
 
-  // 4. Sync with global Vercel cache (best effort)
+  // 5. Sync with global Vercel cache (best effort)
   if (global.vercelChatIds && Array.isArray(global.vercelChatIds)) {
     for (const id of global.vercelChatIds) {
-      const sId = String(id);
-      if (!ids.includes(sId)) {
+      const sId = String(id).trim();
+      if (sId && !ids.includes(sId)) {
         ids.push(sId);
       }
     }
   }
 
-  // 5. Default fallback if empty (original user private Chat ID)
+  // 6. Default fallback if empty (original user private Chat ID)
   if (ids.length === 0) {
     return ["8003576551"];
   }
@@ -85,16 +104,26 @@ async function getRegisteredChatIds() {
   return ids;
 }
 
-async function sendTelegramMessage(text) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0";
-  const chatIds = await getRegisteredChatIds();
+async function sendTelegramMessage(text, options = {}) {
+  const botToken = (options.botToken || process.env.TELEGRAM_BOT_TOKEN || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0").trim();
+  const chatIds = await getRegisteredChatIds(options.chatId);
   
-  if (!botToken || chatIds.length === 0) return;
+  if (!botToken) {
+    console.error("[Telegram] TELEGRAM_BOT_TOKEN no está configurado.");
+    return { success: false, sentCount: 0, totalRecipients: 0, error: "Bot token no configurado" };
+  }
+  if (chatIds.length === 0) {
+    console.warn("[Telegram] No hay Chat IDs registrados para recibir alertas.");
+    return { success: false, sentCount: 0, totalRecipients: 0, error: "No hay chat IDs registrados" };
+  }
+
+  let sentCount = 0;
+  const errors = [];
 
   for (const chatId of chatIds) {
     try {
       const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -105,14 +134,46 @@ async function sendTelegramMessage(text) {
           parse_mode: "HTML"
         })
       });
-      const json = await res.json();
-      if (!res.ok) {
-        console.error(`Failed to send Telegram message to ${chatId}:`, json);
+      let json = await res.json();
+
+      // Fallback: If Telegram fails because of HTML entity parse error (HTTP 400), strip HTML tags and retry in plain text
+      if (!res.ok && json?.description && json.description.includes("can't parse entities")) {
+        console.warn(`[Telegram] Fallo de parseo HTML para ${chatId} (${json.description}). Reintentando en texto plano...`);
+        const plainText = text.replace(/<[^>]+>/g, "");
+        res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: plainText
+          })
+        });
+        json = await res.json();
+      }
+
+      if (res.ok && json.ok) {
+        sentCount++;
+        console.log(`[Telegram] Alerta entregada exitosamente a Chat ID: ${chatId}`);
+      } else {
+        const errorDesc = `Error ${json?.error_code || res.status} al enviar a ${chatId}: ${json?.description || "Desconocido"}`;
+        console.error(`[Telegram] ${errorDesc}`);
+        errors.push(errorDesc);
       }
     } catch (err) {
-      console.error(`Error sending Telegram message to ${chatId}:`, err);
+      const errorDesc = `Excepción de red al enviar a ${chatId}: ${err.message}`;
+      console.error(`[Telegram] ${errorDesc}`);
+      errors.push(errorDesc);
     }
   }
+
+  return {
+    success: sentCount > 0,
+    sentCount,
+    totalRecipients: chatIds.length,
+    errors
+  };
 }
 
 const getAlertTitleById = (alertId) => {
@@ -126,7 +187,7 @@ const getAlertTitleById = (alertId) => {
   }
 };
 
-async function handleBackendNotifications(data) {
+async function handleBackendNotifications(data, options = {}) {
   const currentAlerts = data.alerts || [];
   const isOffline = data.isOffline || false;
   
@@ -141,7 +202,7 @@ async function handleBackendNotifications(data) {
       });
       const kvJson = await kvRes.json();
       if (kvJson && kvJson.result) {
-        const state = JSON.parse(kvJson.result);
+        const state = typeof kvJson.result === "string" ? JSON.parse(kvJson.result) : kvJson.result;
         if (state) {
           if (Array.isArray(state.notifiedAlerts)) notifiedAlerts = state.notifiedAlerts;
           if (state.acOutageStartTime !== undefined) outageStartTime = state.acOutageStartTime;
@@ -155,24 +216,26 @@ async function handleBackendNotifications(data) {
   const newNotifiedIds = [...notifiedAlerts];
   let hasChanges = false;
 
-  const plantName = data.plantName || "Planta Nelson Márquez";
-  const batterySOC = data.batterySOC || 50;
-  const batteryVoltage = data.batteryVoltage || 48.0;
-  const houseLoadWatts = data.houseLoad !== undefined ? Math.round(data.houseLoad) : 800;
-  const vac = data.vac !== undefined ? data.vac : 230;
+  const plantName = escapeHtml(data.plantName || "Planta Nelson Márquez");
+  const batterySOC = data.batterySOC !== null && data.batterySOC !== undefined ? data.batterySOC : 50;
+  const batteryVoltage = data.batteryVoltage !== null && data.batteryVoltage !== undefined ? data.batteryVoltage : 48.0;
+  const houseLoadWatts = data.houseLoad !== undefined && data.houseLoad !== null ? Math.round(data.houseLoad) : 800;
+  const vac = data.vac !== undefined && data.vac !== null ? data.vac : 230;
 
   // 1. Notify NEW alarms
   for (const alert of currentAlerts) {
-    if (alert.id === "api_connection_warning") continue;
+    // Ignore internal tracking and warning events from triggering unwanted alerts
+    if (alert.id === "api_connection_warning" || alert.id === "bat_not_optimal") continue;
 
     if (!notifiedAlerts.includes(alert.id)) {
       let text = "";
       
       if (alert.id === "wifi_offline") {
-        text = `⚠️ <b>MÓDULO WI-FI FUERA DE LÍNEA – Planta Nelson Márquez</b>\n` +
+        const timeStr = alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" }) : new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+        text = `⚠️ <b>MÓDULO WI-FI FUERA DE LÍNEA – ${plantName}</b>\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
                `<blockquote><b>Detalle:</b> Se ha perdido la conexión con los servidores de Growatt.\n` +
-               `<b>Hora:</b> ${new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" })}</blockquote>\n` +
+               `<b>Hora:</b> ${timeStr}</blockquote>\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
                `El monitoreo en vivo está pausado hasta restablecer la señal.`;
       } else if (alert.id === "ac_outage") {
@@ -180,7 +243,7 @@ async function handleBackendNotifications(data) {
           outageStartTime = Date.now();
           hasChanges = true;
         }
-        text = `🚨 <b>CORTE DE LUZ – Planta Nelson Márquez</b>\n` +
+        text = `🚨 <b>CORTE DE LUZ – ${plantName}</b>\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
                `• Red Comercial: Sin suministro (0 V)\n` +
                `• Batería: ${batterySOC}% (${batteryVoltage} V)\n` +
@@ -188,14 +251,14 @@ async function handleBackendNotifications(data) {
                `━━━━━━━━━━━━━━━━━━\n` +
                `Respaldo por batería activo.`;
       } else if (alert.id === "bat_low") {
-        text = `🟠 <b>BATERÍA BAJA (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+        text = `🟠 <b>BATERÍA BAJA (${batterySOC}%) – ${plantName}</b>\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
                `• Voltaje: ${batteryVoltage} V\n` +
                `• Consumo: ${houseLoadWatts} W\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
                `Se sugiere moderar el consumo.`;
       } else if (alert.id === "bat_critical") {
-        text = `🔴 <b>BATERÍA CRÍTICA (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+        text = `🔴 <b>BATERÍA CRÍTICA (${batterySOC}%) – ${plantName}</b>\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
                `• Voltaje: ${batteryVoltage} V\n` +
                `• Consumo: ${houseLoadWatts} W\n` +
@@ -203,20 +266,25 @@ async function handleBackendNotifications(data) {
                `¡Alerta! Nivel de batería críticamente bajo.`;
       } else {
         const severityTitle = alert.severity === "critical" ? "🔴 <b>ALERTA CRÍTICA DE INVERSOR</b>" : "⚠️ <b>ADVERTENCIA DE SISTEMA</b>";
-        const localTimeStr = new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
+        const localTimeStr = alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString("es-ES", { timeZone: "America/Caracas" }) : new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
         text = `${severityTitle}\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
-               `<blockquote><b>Evento:</b> ${alert.title}\n` +
-               `<b>Detalle:</b> ${alert.message}\n` +
-               `<b>Código:</b> <code>${alert.code}</code>\n` +
+               `<blockquote><b>Evento:</b> ${escapeHtml(alert.title)}\n` +
+               `<b>Detalle:</b> ${escapeHtml(alert.message)}\n` +
+               `<b>Código:</b> <code>${escapeHtml(alert.code)}</code>\n` +
                `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
                `━━━━━━━━━━━━━━━━━━\n` +
-               `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
+               `🔌 <i>Monitoreo ${plantName}</i>`;
       }
       
-      await sendTelegramMessage(text);
-      newNotifiedIds.push(alert.id);
-      hasChanges = true;
+      const sendResult = await sendTelegramMessage(text, options);
+      // Only mark as notified if the message was successfully dispatched or if no recipients were registered
+      if (sendResult.success || sendResult.totalRecipients === 0) {
+        newNotifiedIds.push(alert.id);
+        hasChanges = true;
+      } else {
+        console.warn(`[Telegram] No se pudo notificar la alerta ${alert.id}. Se reintentará en el siguiente ciclo.`);
+      }
     }
   }
 
@@ -227,13 +295,13 @@ async function handleBackendNotifications(data) {
         const isStillActive = currentAlerts.some((a) => a.id === alertId);
         if (!isStillActive) {
           const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
-          const text = `🟢 <b>MÓDULO RECONECTADO – Planta Nelson Márquez</b>\n` +
+          const text = `🟢 <b>MÓDULO RECONECTADO – ${plantName}</b>\n` +
                        `━━━━━━━━━━━━━━━━━━\n` +
                        `<blockquote><b>Estado:</b> Conexión restablecida con el inversor.\n` +
                        `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
                        `━━━━━━━━━━━━━━━━━━\n` +
-                       `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
-          await sendTelegramMessage(text);
+                       `🔌 <i>Monitoreo ${plantName}</i>`;
+          await sendTelegramMessage(text, options);
           const index = newNotifiedIds.indexOf(alertId);
           if (index > -1) {
             newNotifiedIds.splice(index, 1);
@@ -257,12 +325,12 @@ async function handleBackendNotifications(data) {
               const mins = diffMin % 60;
               durationStr = `${hours}h ${mins} min`;
             } else {
-              durationStr = diffMin > 0 ? `${diffMin} min` : "< 1 min";
+              durationStr = diffMin > 0 ? `${diffMin} min` : "menos de 1 min";
             }
             outageStartTime = null;
             hasChanges = true;
           }
-          text = `✅ <b>LUZ RESTABLECIDA – Planta Nelson Márquez</b>\n` +
+          text = `✅ <b>LUZ RESTABLECIDA – ${plantName}</b>\n` +
                  `━━━━━━━━━━━━━━━━━━\n` +
                  `• Red Comercial: ${vac} V\n` +
                  `• Duración del Corte: ${durationStr}\n` +
@@ -277,21 +345,21 @@ async function handleBackendNotifications(data) {
           hasChanges = true;
           continue;
         } else if (alertId === "bat_not_optimal") {
-          text = `🟢 <b>BATERÍA EN NIVEL ÓPTIMO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+          text = `🟢 <b>BATERÍA EN NIVEL ÓPTIMO (${batterySOC}%) – ${plantName}</b>\n` +
                  `━━━━━━━━━━━━━━━━━━\n` +
                  `• Voltaje: ${batteryVoltage} V\n` +
                  `• Consumo: ${houseLoadWatts} W\n` +
                  `━━━━━━━━━━━━━━━━━━\n` +
                  `La batería ha cargado por encima del nivel óptimo del 80%.`;
         } else if (alertId === "bat_critical") {
-          text = `🔋 <b>BATERÍA SUPERÓ EL LÍMITE CRÍTICO (${batterySOC}%) – Planta Nelson Márquez</b>\n` +
+          text = `🔋 <b>BATERÍA SUPERÓ EL LÍMITE CRÍTICO (${batterySOC}%) – ${plantName}</b>\n` +
                  `━━━━━━━━━━━━━━━━━━\n` +
                  `• Voltaje: ${batteryVoltage} V\n` +
                  `• Consumo: ${houseLoadWatts} W\n` +
                  `━━━━━━━━━━━━━━━━━━\n` +
                  `La batería ha subido por encima del umbral crítico del 30%.`;
         } else {
-          const title = getAlertTitleById(alertId);
+          const title = escapeHtml(getAlertTitleById(alertId));
           const localTimeStr = new Date().toLocaleTimeString("es-ES", { timeZone: "America/Caracas" });
           text = `🟢 <b>SISTEMA RESTABLECIDO</b>\n` +
                  `━━━━━━━━━━━━━━━━━━\n` +
@@ -299,10 +367,10 @@ async function handleBackendNotifications(data) {
                  `<b>Estado:</b> Operación normal y segura.\n` +
                  `<b>Hora:</b> ${localTimeStr}</blockquote>\n` +
                  `━━━━━━━━━━━━━━━━━━\n` +
-                 `🔌 <i>Monitoreo Planta Nelson Márquez</i>`;
+                 `🔌 <i>Monitoreo ${plantName}</i>`;
         }
         
-        await sendTelegramMessage(text);
+        await sendTelegramMessage(text, options);
         const index = newNotifiedIds.indexOf(alertId);
         if (index > -1) {
           newNotifiedIds.splice(index, 1);
@@ -340,6 +408,12 @@ export async function GET(request) {
   const token = searchParams.get("token") || process.env.GROWATT_API_TOKEN || "75433vd880684dfp20nav03t8zb10xp1";
   const isDemoMode = searchParams.get("demo") === "true";
   
+  // Custom Telegram options from query params if supplied
+  const tgOptions = {
+    botToken: searchParams.get("tgToken") || undefined,
+    chatId: searchParams.get("tgChatId") || undefined
+  };
+
   // Set up Telegram webhook dynamically when hosted on Vercel
   const host = request.headers.get("host");
   if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
@@ -407,8 +481,8 @@ export async function GET(request) {
       });
     }
 
-    // 2. Return cached telemetry if requested within 4 minutes and 50 seconds (290,000 ms)
-    if (lastGrowattTelemetry && (nowMs - lastTelemetryTime < 290000)) {
+    // 2. Return cached telemetry if requested within 2 minutes (120,000 ms)
+    if (lastGrowattTelemetry && (nowMs - lastTelemetryTime < 120000)) {
       return NextResponse.json({
         source: "growatt_openapi_cached",
         success: true,
@@ -424,7 +498,7 @@ export async function GET(request) {
         lastTelemetryTime = nowMs;
 
         // Trigger server-side alerts check & telegram notifier
-        await handleBackendNotifications(realTelemetry);
+        await handleBackendNotifications(realTelemetry, tgOptions);
         
         return NextResponse.json({
           source: "growatt_openapi_realtime",
@@ -467,7 +541,7 @@ export async function GET(request) {
       };
 
       // Trigger server-side alerts check & telegram notifier ONLY for wifi_offline!
-      await handleBackendNotifications(offlineData);
+      await handleBackendNotifications(offlineData, tgOptions);
 
       return NextResponse.json({
         source: "growatt_openapi_offline",
@@ -480,7 +554,7 @@ export async function GET(request) {
   // Default to live high-fidelity simulation
   const liveTelemetry = generateLiveTelemetry(token, config);
   // Trigger server-side alerts check & telegram notifier
-  await handleBackendNotifications(liveTelemetry);
+  await handleBackendNotifications(liveTelemetry, tgOptions);
   
   return NextResponse.json({
     source: "telemetry_engine_v3",
