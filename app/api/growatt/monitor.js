@@ -115,6 +115,14 @@ async function sendTelegramMessage(text) {
 }
 
 async function fetchGrowattOpenAPI(token, apiPath, queryParams = {}, method = "GET", bodyParams = null) {
+  if (global.growattRateLimitUntil && Date.now() < global.growattRateLimitUntil) {
+    const remainingSec = Math.round((global.growattRateLimitUntil - Date.now()) / 1000);
+    throw {
+      error_code: 10012,
+      error_msg: `error_frequently_access (Enfriamiento activo: reintentando en ${remainingSec}s)`
+    };
+  }
+
   const domains = [
     "https://openapi.growatt.com",
     "https://openapi-us.growatt.com",
@@ -154,6 +162,11 @@ async function fetchGrowattOpenAPI(token, apiPath, queryParams = {}, method = "G
         return json.data || json;
       } else {
         lastError = json;
+        if (json && json.error_code === 10012) {
+          global.growattRateLimitUntil = Date.now() + 10 * 60 * 1000;
+          console.warn("[BackgroundMonitor] Bloqueo 10012 detectado. Pausando 10 min para permitir que Growatt libere la API.");
+          break;
+        }
       }
     } catch (e) {
       lastError = e;

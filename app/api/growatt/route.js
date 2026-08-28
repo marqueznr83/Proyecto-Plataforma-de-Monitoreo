@@ -618,6 +618,14 @@ export async function GET(request) {
 
 // Regional OpenAPI endpoints lookup
 async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET", bodyParams = null) {
+  if (global.growattRateLimitUntil && Date.now() < global.growattRateLimitUntil) {
+    const remainingSec = Math.round((global.growattRateLimitUntil - Date.now()) / 1000);
+    throw {
+      error_code: 10012,
+      error_msg: `error_frequently_access (Enfriamiento activo: reintentando en ${remainingSec}s)`
+    };
+  }
+
   const domains = [
     "https://openapi.growatt.com",
     "https://openapi-us.growatt.com",
@@ -674,10 +682,16 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
         return json.data || json;
       } else {
         lastError = json;
-        console.error(`Growatt API error on ${domain} for path ${path}:`, json);
+        if (json && json.error_code === 10012) {
+          global.growattRateLimitUntil = Date.now() + 10 * 60 * 1000;
+          console.warn("[Growatt API] Bloqueo 10012 detectado. Activado periodo de reposo de 10 min.");
+          break;
+        }
       }
     } catch (e) {
       lastError = e;
+    }
+  }
       console.error(`Growatt connection failed on ${domain} for path ${path}:`, e.name === "AbortError" ? "Timeout (exceeded 4s)" : e.message);
     }
   }
