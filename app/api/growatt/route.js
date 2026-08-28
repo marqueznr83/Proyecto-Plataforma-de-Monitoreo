@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { startBackgroundMonitoring } from "./monitor";
 
 export const dynamic = "force-dynamic";
+
+// Ensure 24/7 background monitor is running
+if (typeof window === "undefined") {
+  try {
+    startBackgroundMonitoring();
+  } catch (e) {}
+}
 
 // Keep cache in memory for serverless container warm cycles
 let globalNotifiedAlerts = [];
