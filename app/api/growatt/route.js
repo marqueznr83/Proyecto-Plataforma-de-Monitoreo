@@ -218,13 +218,25 @@ const getAlertTitleById = (alertId) => {
   }
 };
 
+const stateFilePath = path.join(process.cwd(), "growatt_state.json");
+
 async function handleBackendNotifications(data, options = {}) {
   const currentAlerts = data.alerts || [];
   const isOffline = data.isOffline || false;
   
-  // Load state from Vercel KV or fall back to memory
+  // Load state from local file, Vercel KV, or memory
   let notifiedAlerts = [...globalNotifiedAlerts];
   let outageStartTime = acOutageStartTime;
+
+  try {
+    if (fs.existsSync(stateFilePath)) {
+      const fileState = JSON.parse(fs.readFileSync(stateFilePath, "utf8"));
+      if (fileState) {
+        if (Array.isArray(fileState.notifiedAlerts)) notifiedAlerts = fileState.notifiedAlerts;
+        if (fileState.acOutageStartTime !== undefined) outageStartTime = fileState.acOutageStartTime;
+      }
+    }
+  } catch (e) {}
 
   if (kvUrl && kvToken) {
     try {
@@ -414,6 +426,13 @@ async function handleBackendNotifications(data, options = {}) {
   if (hasChanges) {
     globalNotifiedAlerts = newNotifiedIds;
     acOutageStartTime = outageStartTime;
+
+    try {
+      fs.writeFileSync(stateFilePath, JSON.stringify({
+        notifiedAlerts: newNotifiedIds,
+        acOutageStartTime: outageStartTime
+      }, null, 2), "utf8");
+    } catch (e) {}
 
     // Persist state to Vercel KV
     if (kvUrl && kvToken) {

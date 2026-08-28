@@ -278,6 +278,17 @@ export async function runTelemetryCheck() {
       });
     }
 
+    const stateFilePath = path.join(process.cwd(), "growatt_state.json");
+    try {
+      if (fs.existsSync(stateFilePath)) {
+        const fileState = JSON.parse(fs.readFileSync(stateFilePath, "utf8"));
+        if (fileState) {
+          if (Array.isArray(fileState.notifiedAlerts)) globalNotifiedAlerts = fileState.notifiedAlerts;
+          if (fileState.acOutageStartTime !== undefined) acOutageStartTime = fileState.acOutageStartTime;
+        }
+      }
+    } catch (e) {}
+
     // Process alerts dispatch
     const plantName = escapeHtml(telemetryData.plantName);
     const newNotified = [...globalNotifiedAlerts];
@@ -363,6 +374,13 @@ export async function runTelemetryCheck() {
     }
 
     globalNotifiedAlerts = newNotified;
+    try {
+      fs.writeFileSync(stateFilePath, JSON.stringify({
+        notifiedAlerts: newNotified,
+        acOutageStartTime: acOutageStartTime
+      }, null, 2), "utf8");
+    } catch (e) {}
+
     console.log(`[BackgroundMonitor] Chequeo 24/7 completado con éxito a las ${now.toLocaleTimeString("es-ES")}. Red: ${vac}V, Batería: ${batterySOC}%`);
   } catch (err) {
     console.error("[BackgroundMonitor] Error durante chequeo de telemetría:", err.message);
