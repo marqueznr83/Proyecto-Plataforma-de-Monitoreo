@@ -201,7 +201,7 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
 }
 
 async function fetchLiveGrowattData(token) {
-  const deviceSN = "AOE9CJC058";
+  const deviceSN = "AOE9CJC02D";
   const plantName = "Residencial Sr. Nelson";
   const inverterModel = "Growatt Inverter UPS";
 
@@ -324,7 +324,7 @@ async function getLatestTelemetry() {
   return {
     plantName: "Residencial Sr. Nelson",
     inverterModel: "Growatt Inverter UPS",
-    serialNumber: "AOE9CJC058",
+    serialNumber: "AOE9CJC02D",
     status: "NORMAL",
     isOffline: false,
     vac: 230.0,
@@ -342,7 +342,7 @@ function formatStatusReport(data) {
   const isOffline = data?.isOffline || false;
   const plantName = escapeHtml(data?.plantName || "Residencial Sr. Nelson");
   const model = escapeHtml(data?.inverterModel || "Growatt Inverter UPS");
-  const sn = escapeHtml(data?.serialNumber || "AOE9CJC058");
+  const sn = escapeHtml(data?.serialNumber || "AOE9CJC02D");
 
   if (isOffline) {
     return (

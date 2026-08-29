@@ -101,7 +101,7 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
               <p className="text-xs text-subtle flex items-center gap-1.5 mt-0.5">
                 <span>{data?.inverterModel || "Growatt Inverter UPS"}</span>
                 <span>•</span>
-                <span className="font-mono text-[11px]">SN: {data?.serialNumber || "AOE9CJC058"}</span>
+                <span className="font-mono text-[11px]">SN: {data?.serialNumber || "AOE9CJC02D"}</span>
               </p>
             </div>
           </div>

@@ -558,7 +558,7 @@ export async function GET(request) {
         data: {
           plantName: "Residencial Sr. Nelson",
           inverterModel: "Growatt Inverter UPS",
-          serialNumber: "AOE9CJC058",
+          serialNumber: "AOE9CJC02D",
           status: "MÓDULO DESCONECTADO",
           statusMessage: "Conexión con el inversor perdida (Caché)",
           isOffline: true,
@@ -609,7 +609,7 @@ export async function GET(request) {
       const offlineData = {
         plantName: "Residencial Sr. Nelson",
         inverterModel: "Growatt Inverter UPS",
-        serialNumber: "AOE9CJC058",
+        serialNumber: "AOE9CJC02D",
         status: "MÓDULO DESCONECTADO",
         statusMessage: "Conexión con el inversor perdida",
         isOffline: true,
@@ -741,7 +741,7 @@ async function fetchGrowattOpenAPI(token, path, queryParams = {}, method = "GET"
 // Fetch and merge real plant, device and battery data from OpenAPI
 async function getRealGrowattTelemetry(token, config) {
   const now = new Date();
-  const deviceSN = "AOE9CJC058";
+  const deviceSN = "AOE9CJC02D";
   const plantName = "Residencial Sr. Nelson";
   const inverterModel = "Growatt Inverter UPS";
 

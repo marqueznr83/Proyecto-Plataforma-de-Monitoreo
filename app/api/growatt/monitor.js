@@ -172,7 +172,7 @@ async function fetchGrowattOpenAPI(token, apiPath, queryParams = {}, method = "G
   throw lastError || new Error("Failed to connect to Growatt OpenAPI");
 }
 
-let cachedDeviceSN = "AOE9CJC058";
+let cachedDeviceSN = "AOE9CJC02D";
 let cachedPlantName = "Residencial Sr. Nelson";
 let cachedModel = "Growatt Inverter UPS";
 
