@@ -4,9 +4,13 @@ import { Sun, Calendar, TrendingUp, Leaf, Zap, Battery, Home, Cpu, Activity, Ale
 
 export default function KPICards({ data, hasSolar }) {
   const isOffline = data?.isOffline || false;
-  const isNoAC = !isOffline && data?.vac === 0;
-  const batSOC = data?.battery?.soc || 50;
-  const batVolts = data?.battery?.voltage || 45.5;
+  const isNoAC = !isOffline && (data?.vac === 0 || data?.gridAC?.vac === 0);
+  const batSOC = data?.batterySOC !== null && data?.batterySOC !== undefined 
+    ? data.batterySOC 
+    : (data?.battery?.soc !== null && data?.battery?.soc !== undefined ? data.battery.soc : 100);
+  const batVolts = data?.batteryVoltage !== null && data?.batteryVoltage !== undefined 
+    ? Number(data.batteryVoltage).toFixed(1) 
+    : (data?.battery?.voltage !== null && data?.battery?.voltage !== undefined ? Number(data.battery.voltage).toFixed(1) : "54.1");
   
   // Choose cards based on whether physical solar panels are connected
   let cards = [];

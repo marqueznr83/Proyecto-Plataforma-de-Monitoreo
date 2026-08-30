@@ -8,9 +8,9 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
   const pacKW = isOffline ? "N/D" : (data?.pacKW !== undefined ? data.pacKW : (data?.houseKW !== undefined ? data.houseKW : 0.85));
   const houseKW = isOffline ? "N/D" : (data?.houseKW !== undefined ? data.houseKW : Number(((data?.houseLoad !== undefined ? data.houseLoad : 850) / 1000).toFixed(2)));
   const gridKW = isOffline ? 0 : Number(((data?.gridPower !== undefined ? data.gridPower : (hasSolar ? 0 : -houseKW * 1000)) / 1000).toFixed(2));
-  const batterySOC = isOffline ? null : (data?.battery?.soc !== undefined ? data.battery.soc : (data?.batterySOC || 50));
-  const batteryVoltage = isOffline ? null : (data?.battery?.voltage !== undefined ? data.battery.voltage : (data?.batteryVoltage || 48.0));
-  const batteryKW = isOffline ? 0 : Number(((data?.battery?.power !== undefined ? data.battery.power : (data?.batteryPower || 0)) / 1000).toFixed(2));
+  const batterySOC = isOffline ? null : (data?.batterySOC !== null && data?.batterySOC !== undefined ? data.batterySOC : (data?.battery?.soc !== null && data?.battery?.soc !== undefined ? data.battery.soc : 100));
+  const batteryVoltage = isOffline ? null : (data?.batteryVoltage !== null && data?.batteryVoltage !== undefined ? Number(data.batteryVoltage).toFixed(1) : (data?.battery?.voltage !== null && data?.battery?.voltage !== undefined ? Number(data.battery.voltage).toFixed(1) : "54.1"));
+  const batteryKW = isOffline ? 0 : Number(((data?.batteryPower !== null && data?.batteryPower !== undefined ? data.batteryPower : (data?.battery?.power || 0)) / 1000).toFixed(2));
 
   const isNoAC = !isOffline && (data?.vac === 0 || data?.gridAC?.vac === 0);
   const isBatCritical = !isOffline && batterySOC !== null && batterySOC <= 15;

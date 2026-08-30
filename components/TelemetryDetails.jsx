@@ -4,8 +4,12 @@ import { Gauge, Cpu, Zap, Thermometer, CheckCircle2, Battery, ShieldAlert } from
 
 export default function TelemetryDetails({ data, hasSolar = false }) {
   const isNoAC = data?.vac === 0 || data?.gridAC?.vac === 0;
-  const batSOC = data?.battery?.soc || 50;
-  const batVolts = data?.battery?.voltage || 48.0;
+  const batSOC = data?.batterySOC !== null && data?.batterySOC !== undefined 
+    ? data.batterySOC 
+    : (data?.battery?.soc !== null && data?.battery?.soc !== undefined ? data.battery.soc : 100);
+  const batVolts = data?.batteryVoltage !== null && data?.batteryVoltage !== undefined 
+    ? Number(data.batteryVoltage).toFixed(1) 
+    : (data?.battery?.voltage !== null && data?.battery?.voltage !== undefined ? Number(data.battery.voltage).toFixed(1) : "54.1");
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

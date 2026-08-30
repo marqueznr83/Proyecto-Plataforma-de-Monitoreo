@@ -304,6 +304,11 @@ export async function runTelemetryCheck() {
       pac,
       batterySOC,
       batteryVoltage,
+      battery: {
+        soc: batterySOC,
+        voltage: batteryVoltage,
+        power: 0
+      },
       houseLoad,
       temperature,
       cachedAt: Date.now(),
