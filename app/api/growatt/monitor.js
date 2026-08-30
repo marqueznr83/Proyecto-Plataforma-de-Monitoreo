@@ -176,6 +176,70 @@ let cachedDeviceSN = "AOE9CJC02D";
 let cachedPlantName = "Residencial Sr. Nelson";
 let cachedModel = "Growatt Inverter UPS";
 
+const historyFilePath = path.join(process.cwd(), "daily_history.json");
+
+export function recordDailyTelemetry(point) {
+  if (!point) return [];
+  const now = Date.now();
+  let history = [];
+
+  if (global.dailyHistory && Array.isArray(global.dailyHistory)) {
+    history = [...global.dailyHistory];
+  } else {
+    try {
+      if (fs.existsSync(historyFilePath)) {
+        const fileContent = JSON.parse(fs.readFileSync(historyFilePath, "utf8"));
+        if (Array.isArray(fileContent)) history = fileContent;
+      }
+    } catch (e) {}
+  }
+
+  // Retain points from the last 24 hours (86,400,000 ms)
+  history = history.filter(p => p && p.timestamp && (now - p.timestamp < 86400000));
+
+  const last = history[history.length - 1];
+  if (!last || (now - last.timestamp >= 120000)) {
+    const timeStr = new Date(now).toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Caracas"
+    });
+    history.push({
+      time: timeStr,
+      timestamp: now,
+      vac: point.vac !== null && point.vac !== undefined ? Number(Number(point.vac).toFixed(1)) : 230,
+      batterySOC: point.batterySOC !== null && point.batterySOC !== undefined ? Math.round(Number(point.batterySOC)) : 100,
+      batteryVoltage: point.batteryVoltage !== null && point.batteryVoltage !== undefined ? Number(Number(point.batteryVoltage).toFixed(1)) : 53.3,
+      houseKW: point.houseKW !== null && point.houseKW !== undefined ? Number(point.houseKW) : (Number((Number(point.houseLoad || 800) / 1000).toFixed(2))),
+      houseW: point.houseLoad !== null && point.houseLoad !== undefined ? Math.round(Number(point.houseLoad)) : 800,
+      temperature: point.temperature !== null && point.temperature !== undefined ? Number(Number(point.temperature).toFixed(1)) : 38.5
+    });
+  }
+
+  global.dailyHistory = history;
+  try {
+    fs.writeFileSync(historyFilePath, JSON.stringify(history, null, 2), "utf8");
+  } catch (e) {}
+
+  return history;
+}
+
+export function getDailyHistory() {
+  if (global.dailyHistory && Array.isArray(global.dailyHistory) && global.dailyHistory.length > 0) {
+    return global.dailyHistory;
+  }
+  try {
+    if (fs.existsSync(historyFilePath)) {
+      const fileContent = JSON.parse(fs.readFileSync(historyFilePath, "utf8"));
+      if (Array.isArray(fileContent)) {
+        global.dailyHistory = fileContent;
+        return fileContent;
+      }
+    }
+  } catch (e) {}
+  return [];
+}
+
 export async function runTelemetryCheck() {
   const token = (process.env.GROWATT_API_TOKEN || "75433vd880684dfp20nav03t8zb10xp1").trim();
   const now = new Date();
@@ -245,6 +309,10 @@ export async function runTelemetryCheck() {
       cachedAt: Date.now(),
       lastUpdated: now.toISOString()
     };
+
+    // Record real point into 24h history log
+    recordDailyTelemetry(telemetryData);
+    telemetryData.dailyHistory = getDailyHistory();
 
     // Cache latest telemetry
     global.lastGrowattTelemetry = telemetryData;

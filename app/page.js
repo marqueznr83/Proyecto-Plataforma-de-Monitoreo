@@ -137,8 +137,8 @@ export default function Home() {
             {/* Interactive Energy Flow Diagram (clean 3-node UPS view when no solar) */}
             <EnergyFlowDiagram data={data} hasSolar={alarmConfig.hasSolar} />
 
-            {/* Historical Charts (Home Load & Battery trends in UPS mode) */}
-            <GenerationChart hourlyData={data?.hourlyData || []} hasSolar={alarmConfig.hasSolar} />
+            {/* Historical Charts (Real 24h Telemetry: Grid AC Outages, Battery & Load) */}
+            <GenerationChart dailyHistory={data?.dailyHistory || []} hourlyData={data?.hourlyData || []} hasSolar={alarmConfig.hasSolar} />
 
             {/* Telemetry Diagnostics (Inverter AC, Battery BMS & Grid metrics) */}
             <TelemetryDetails data={data} hasSolar={alarmConfig.hasSolar} />

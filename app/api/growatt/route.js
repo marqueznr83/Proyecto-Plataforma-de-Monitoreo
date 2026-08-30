@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { startBackgroundMonitoring } from "./monitor";
+import { startBackgroundMonitoring, recordDailyTelemetry, getDailyHistory } from "./monitor";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,8 @@ const kvToken = process.env.KV_REST_API_TOKEN;
 function saveLatestTelemetry(data) {
   if (!data) return;
   try {
+    recordDailyTelemetry(data);
+    data.dailyHistory = getDailyHistory();
     lastGrowattTelemetry = data;
     lastTelemetryTime = Date.now();
     global.lastGrowattTelemetry = data;
@@ -502,6 +504,8 @@ export async function GET(request) {
     if (global.lastGrowattTelemetry && (nowMs - (global.lastGrowattTelemetryTime || 0) < 300000)) {
       lastGrowattTelemetry = global.lastGrowattTelemetry;
       lastTelemetryTime = global.lastGrowattTelemetryTime;
+      const history = getDailyHistory();
+      if (history.length > 0) global.lastGrowattTelemetry.dailyHistory = history;
       return NextResponse.json({
         source: "growatt_openapi_global_cached",
         success: true,
@@ -514,6 +518,8 @@ export async function GET(request) {
       if (fs.existsSync(telemetryFilePath)) {
         const fileData = JSON.parse(fs.readFileSync(telemetryFilePath, "utf8"));
         if (fileData && fileData.cachedAt && (nowMs - fileData.cachedAt < 300000)) {
+          const history = getDailyHistory();
+          if (history.length > 0) fileData.dailyHistory = history;
           global.lastGrowattTelemetry = fileData;
           global.lastGrowattTelemetryTime = fileData.cachedAt;
           lastGrowattTelemetry = fileData;
