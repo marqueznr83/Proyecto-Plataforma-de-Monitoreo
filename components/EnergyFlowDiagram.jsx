@@ -250,19 +250,7 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
           </div>
         </div>
 
-        {isNoAC && (
-          <div className="sm:col-span-2 mt-3 p-3.5 rounded-xl bg-red-500/15 border-2 border-red-500/60 flex flex-wrap items-center justify-between gap-2 text-xs shadow-md animate-pulse">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-extrabold">
-              <Clock className="w-5 h-5 animate-spin text-red-500 shrink-0" />
-              <span className="text-sm">TIEMPO TRANSCURRIDO SIN ENTRADA AC (CORTE):</span>
-            </div>
-            <div className="px-3.5 py-1.5 rounded-lg bg-red-600 text-white font-mono font-black text-sm shadow flex items-center gap-2">
-              <span>⏱️</span>
-              <span>{formattedLong}</span>
-              <span className="text-[11px] bg-red-950 px-2 py-0.5 rounded font-mono">({formattedClock})</span>
-            </div>
-          </div>
-        )}
+        
 
         {/* BATTERY BMS STATUS WITH CRITICAL & LOW ALARM HIGHLIGHTS */}
         <div className={`theme-well p-4 flex items-center justify-between border-2 transition-all shadow-sm ${

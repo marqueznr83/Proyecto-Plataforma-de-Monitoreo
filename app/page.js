@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Navbar from "@/components/Navbar";
 import KPICards from "@/components/KPICards";
+import ACOutageBanner from "@/components/ACOutageBanner";
 import EnergyFlowDiagram from "@/components/EnergyFlowDiagram";
 import GenerationChart from "@/components/GenerationChart";
 import TelemetryDetails from "@/components/TelemetryDetails";
@@ -128,6 +129,9 @@ export default function Home() {
           <>
             {/* Top KPI Summary Cards (dynamically switches between UPS mode and Solar mode) */}
             <KPICards data={data} hasSolar={alarmConfig.hasSolar} />
+
+            {/* High Priority Outage Banner below 4 KPI cards */}
+            <ACOutageBanner data={data} />
 
             {/* Interactive Energy Flow Diagram (clean 3-node UPS view when no solar) */}
             <EnergyFlowDiagram data={data} hasSolar={alarmConfig.hasSolar} />
