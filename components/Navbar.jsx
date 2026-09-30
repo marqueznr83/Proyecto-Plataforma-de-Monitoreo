@@ -67,7 +67,7 @@ export default function Navbar({ data, onRefresh, isRefreshing }) {
   if (isNoAC) {
     badgeStyle = "bg-red-500/20 border-red-500/60 text-red-600 dark:text-red-400 font-extrabold animate-pulse";
   }
-  let pulseDot = "bg-emerald-500";
+  let pulseDot = isNoAC ? "bg-red-500" : "bg-emerald-500";
   if (hasCritical) {
     badgeStyle = "bg-red-500/20 border-red-500/60 text-red-600 dark:text-red-300 font-bold animate-pulse";
     pulseDot = "bg-red-500";
@@ -125,7 +125,12 @@ export default function Navbar({ data, onRefresh, isRefreshing }) {
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${pulseDot} opacity-75`} />
               <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${pulseDot}`} />
             </span>
-            <span className="font-extrabold tracking-wider">{visibleAlerts.length > 0 ? (hasCritical ? "CRÍTICO (ROJO)" : "ADVERTENCIA (AMARILLO)") : "ONLINE"}</span>
+            <span className="font-extrabold tracking-wider">{isNoAC ? "CORTE AC (RESPALDO)" : visibleAlerts.length > 0 ? (hasCritical ? "CRÍTICO (ROJO)" : "ADVERTENCIA (AMARILLO)") : "ONLINE"}</span>
+            {isNoAC && (
+              <span className="bg-red-600 text-white font-mono px-2 py-0.5 rounded text-[11px] font-black shadow-inner flex items-center gap-1 ml-1">
+                ⏱️ {formattedShort}
+              </span>
+            )}
             <span className="text-[11px] opacity-90 hidden md:inline">
               ({visibleAlerts.length > 0 ? `${visibleAlerts.length} alarmas sin leer` : "Operación Óptima"})
             </span>

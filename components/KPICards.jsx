@@ -24,7 +24,7 @@ export default function KPICards({ data, hasSolar }) {
         title: "Estado Red Eléctrica (AC IN)",
         value: isOffline ? "N/D" : isNoAC ? "CORTE AC" : `${data?.vac || 230}`,
         unit: isOffline ? "" : isNoAC ? "" : "V",
-        subtitle: isOffline ? "Módulo fuera de línea" : isNoAC ? "⚠️ Alarma: Sin entrada de red eléctrica" : `Frecuencia normal: ${data?.fac || 60} Hz`,
+        subtitle: isOffline ? "Módulo fuera de línea" : isNoAC ? `⏱️ Tiempo sin luz: ${formattedShort}` : `Frecuencia normal: ${data?.fac || 60} Hz`,
         icon: Zap,
         badgeColor: isOffline
           ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
