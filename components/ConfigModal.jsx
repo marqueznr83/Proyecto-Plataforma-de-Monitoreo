@@ -16,9 +16,7 @@ export default function ConfigModal({
   const [maxVac, setMaxVac] = useState(alarmConfig?.maxVac || 250);
   const [lowBat, setLowBat] = useState(alarmConfig?.lowBat || 60);
   const [critBat, setCritBat] = useState(alarmConfig?.critBat || 30);
-  const [noAC, setNoAC] = useState(alarmConfig?.noAC || false);
   const [hasSolar, setHasSolar] = useState(alarmConfig?.hasSolar || false);
-  const [testBatSOC, setTestBatSOC] = useState(alarmConfig?.testBatSOC ?? 50);
 
   // Telegram state
   const [tgToken, setTgToken] = useState(telegramConfig?.botToken || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0");
@@ -34,9 +32,7 @@ export default function ConfigModal({
         setMaxVac(alarmConfig.maxVac || 250);
         setLowBat(alarmConfig.lowBat || 60);
         setCritBat(alarmConfig.critBat || 30);
-        setNoAC(alarmConfig.noAC || false);
         setHasSolar(alarmConfig.hasSolar || false);
-        setTestBatSOC(alarmConfig.testBatSOC ?? 50);
       }
       if (telegramConfig) {
         setTgToken(telegramConfig.botToken || "8897443534:AAFrSoP7kbLJ3FBpoiblRhp9qgZC7I53N_0");
@@ -55,9 +51,7 @@ export default function ConfigModal({
       maxVac,
       lowBat,
       critBat,
-      noAC,
-      hasSolar,
-      testBatSOC
+      hasSolar
     });
     onUpdateTelegramConfig({
       botToken: tgToken.trim(),

@@ -59,12 +59,10 @@ export default function Home() {
         token: token,
         demo: isDemoMode,
         hasSolar: alarmConfig.hasSolar,
-        noAC: alarmConfig.noAC,
         minVac: alarmConfig.minVac,
         maxVac: alarmConfig.maxVac,
         lowBat: alarmConfig.lowBat,
-        critBat: alarmConfig.critBat,
-        batSOC: alarmConfig.testBatSOC
+        critBat: alarmConfig.critBat
       });
 
       if (telegramConfig.botToken) {

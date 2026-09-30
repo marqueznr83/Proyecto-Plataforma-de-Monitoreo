@@ -1,6 +1,7 @@
 "use client";
 
-import { Sun, Cpu, Home, Zap, BatteryCharging, Activity, ShieldAlert, CheckCircle2, ArrowRight } from "lucide-react";
+import { Sun, Cpu, Home, Zap, BatteryCharging, Activity, ShieldAlert, CheckCircle2, ArrowRight, Clock } from "lucide-react";
+import { useACOutageTimer } from "@/components/useACOutageTimer";
 
 export default function EnergyFlowDiagram({ data, hasSolar = false }) {
   const isOffline = data?.isOffline || false;
@@ -15,6 +16,7 @@ export default function EnergyFlowDiagram({ data, hasSolar = false }) {
   const isNoAC = !isOffline && (data?.vac === 0 || data?.gridAC?.vac === 0);
   const isBatCritical = !isOffline && batterySOC !== null && batterySOC <= 15;
   const isBatLow = !isOffline && batterySOC !== null && batterySOC > 15 && batterySOC <= 25;
+  const { formattedShort, formattedLong, formattedClock } = useACOutageTimer(data?.acOutageStartTime, isNoAC);
 
   const batClass = `h-full rounded-full transition-all ${
     isBatCritical

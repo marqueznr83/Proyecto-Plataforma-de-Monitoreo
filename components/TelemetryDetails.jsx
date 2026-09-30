@@ -1,9 +1,11 @@
 "use client";
 
-import { Gauge, Cpu, Zap, Thermometer, CheckCircle2, Battery, ShieldAlert } from "lucide-react";
+import { Gauge, Cpu, Zap, Thermometer, CheckCircle2, Battery, ShieldAlert, Clock } from "lucide-react";
+import { useACOutageTimer } from "@/components/useACOutageTimer";
 
 export default function TelemetryDetails({ data, hasSolar = false }) {
   const isNoAC = data?.vac === 0 || data?.gridAC?.vac === 0;
+  const { formattedLong } = useACOutageTimer(data?.acOutageStartTime, isNoAC);
   const batSOC = data?.batterySOC !== null && data?.batterySOC !== undefined 
     ? data.batterySOC 
     : (data?.battery?.soc !== null && data?.battery?.soc !== undefined ? data.battery.soc : 100);

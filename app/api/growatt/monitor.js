@@ -319,6 +319,7 @@ export async function runTelemetryCheck() {
     recordDailyTelemetry(telemetryData);
     telemetryData.dailyHistory = getDailyHistory();
 
+    telemetryData.acOutageStartTime = vac === 0 ? (acOutageStartTime || Date.now()) : null;
     // Cache latest telemetry
     global.lastGrowattTelemetry = telemetryData;
     global.lastGrowattTelemetryTime = Date.now();

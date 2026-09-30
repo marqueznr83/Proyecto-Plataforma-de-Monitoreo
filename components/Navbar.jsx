@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Sun, RefreshCw, Settings, Zap, Bell, AlertTriangle, ShieldAlert, CheckCircle2, Trash2, Send } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import { useACOutageTimer } from "@/components/useACOutageTimer";
 
 export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }) {
   const [countdown, setCountdown] = useState(300);
@@ -52,6 +53,10 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
 
   // Filter visible alerts (excluding those manually dismissed by user and internal optimal battery tracker)
   const visibleAlerts = alerts.filter((a) => !dismissedAlerts.includes(a.id) && a.id !== "bat_not_optimal");
+
+  const isOffline = data?.isOffline || false;
+  const isNoAC = !isOffline && (data?.vac === 0 || data?.gridAC?.vac === 0);
+  const { formattedShort } = useACOutageTimer(data?.acOutageStartTime, isNoAC);
 
   const hasCritical = visibleAlerts.some((a) => a.severity === "critical");
   const hasWarning = visibleAlerts.some((a) => a.severity === "warning");

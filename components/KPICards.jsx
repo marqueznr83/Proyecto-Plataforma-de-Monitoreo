@@ -1,6 +1,7 @@
 "use client";
 
 import { Sun, Calendar, TrendingUp, Leaf, Zap, Battery, Home, Cpu, Activity, AlertTriangle } from "lucide-react";
+import { useACOutageTimer } from "@/components/useACOutageTimer";
 
 export default function KPICards({ data, hasSolar }) {
   const isOffline = data?.isOffline || false;
@@ -8,6 +9,7 @@ export default function KPICards({ data, hasSolar }) {
   const batSOC = data?.batterySOC !== null && data?.batterySOC !== undefined 
     ? data.batterySOC 
     : (data?.battery?.soc !== null && data?.battery?.soc !== undefined ? data.battery.soc : 100);
+  const { formattedShort } = useACOutageTimer(data?.acOutageStartTime, isNoAC);
   const batVolts = data?.batteryVoltage !== null && data?.batteryVoltage !== undefined 
     ? Number(data.batteryVoltage).toFixed(1) 
     : (data?.battery?.voltage !== null && data?.battery?.voltage !== undefined ? Number(data.battery.voltage).toFixed(1) : "54.1");

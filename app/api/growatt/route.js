@@ -488,12 +488,12 @@ export async function GET(request) {
   const config = {
     isDemoMode: isDemoMode,
     hasSolar: searchParams.get("hasSolar") === "true", 
-    simulateACOutage: searchParams.get("noAC") === "true",
+    simulateACOutage: false,
     minGridVac: Number(searchParams.get("minVac")) || 195,
     maxGridVac: Number(searchParams.get("maxVac")) || 250,
     lowBatSOC: Number(searchParams.get("lowBat")) || 60,
     criticalBatSOC: Number(searchParams.get("critBat")) || 30,
-    customBatSOC: searchParams.get("batSOC") !== null ? Number(searchParams.get("batSOC")) : null
+    customBatSOC: null
   };
 
   // If not in demo mode, attempt to connect to the real Growatt OpenAPI
@@ -901,6 +901,13 @@ async function getRealGrowattTelemetry(token, config) {
     });
   }
 
+  const isNoACReal = vac === 0;
+  if (isNoACReal) {
+    if (!global.acOutageStartTime) global.acOutageStartTime = Date.now();
+  } else {
+    global.acOutageStartTime = null;
+  }
+
   return {
     plantName: plant.plant_name || plant.plantName || "Residencial Sr. Nelson",
     inverterModel: storageDevice?.model || inverterDevice?.model || "Growatt Inverter UPS",
@@ -909,6 +916,7 @@ async function getRealGrowattTelemetry(token, config) {
     status,
     statusMessage,
     alerts,
+    acOutageStartTime: config.simulateACOutage ? (global.acOutageStartTime || Date.now()) : null,
     hasCriticalAlert: hasCritical,
     hasWarningAlert: hasWarning,
     hasSolar: config.hasSolar,
@@ -1102,6 +1110,12 @@ function generateLiveTelemetry(token, config) {
     });
   }
 
+  if (config.simulateACOutage) {
+    if (!global.acOutageStartTime) global.acOutageStartTime = Date.now();
+  } else {
+    global.acOutageStartTime = null;
+  }
+
   return {
     plantName: "Residencial Sr. Nelson",
     inverterModel: "Growatt Inverter UPS",
@@ -1110,6 +1124,7 @@ function generateLiveTelemetry(token, config) {
     status,
     statusMessage,
     alerts,
+    acOutageStartTime: vac === 0 ? (global.acOutageStartTime || Date.now()) : null,
     hasCriticalAlert: hasCritical,
     hasWarningAlert: hasWarning,
     hasSolar: config.hasSolar,
