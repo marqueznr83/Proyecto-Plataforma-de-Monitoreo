@@ -23,7 +23,7 @@ export default function KPICards({ data, hasSolar }) {
         title: "Estado Red Eléctrica (AC IN)",
         value: isOffline ? "N/D" : isNoAC ? "CORTE AC" : `${data?.vac || 230}`,
         unit: isOffline ? "" : isNoAC ? "" : "V",
-        subtitle: isOffline ? "Módulo fuera de línea" : isNoAC ? `⏱️ Tiempo sin luz: ${formattedShort}` : `Frecuencia normal: ${data?.fac || 60} Hz`,
+        subtitle: isOffline ? "Módulo fuera de línea" : isNoAC ? "⚠️ Corte de luz activo" : `Frecuencia normal: ${data?.fac || 60} Hz`,
         icon: Zap,
         badgeColor: isOffline
           ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
@@ -36,7 +36,7 @@ export default function KPICards({ data, hasSolar }) {
         title: "Nivel de Batería (SOC)",
         value: isOffline ? "N/D" : `${batSOC}`,
         unit: isOffline ? "" : "%",
-        subtitle: isOffline ? "Sin telemetría en vivo" : `Voltaje BMS: ${batVolts}V (${batSOC < 20 ? "⚠️ Crítico" : "Óptimo"})`,
+        subtitle: isOffline ? "Sin telemetría en vivo" : `Voltaje BMS: ${batVolts}V (${batSOC < 20 ? "⚠️ Crítico" : "Ñptimo"})`,
         icon: Battery,
         badgeColor: isOffline
           ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
@@ -66,7 +66,7 @@ export default function KPICards({ data, hasSolar }) {
       },
       {
         title: "Temperatura Inversor",
-        value: isOffline ? "N/D" : `${Number(data?.temperature || 38.5).toFixed(1)}`,
+        value: isOffline ? "N/D" : `${Number(data?.temperatura || 38.5).toFixed(1)}`,
         unit: isOffline ? "" : "°C",
         subtitle: isOffline ? "Servidor desconectado" : isNoAC ? "Modo Respaldo desde Baterías" : "Modo Normal (Red AC Activa)",
         icon: Cpu,
@@ -116,7 +116,7 @@ export default function KPICards({ data, hasSolar }) {
         title: "Impacto Ecológico",
         value: isOffline ? "N/D" : `${data?.co2SavedKg || 0}`,
         unit: isOffline ? "" : "kg CO₂",
-        subtitle: isOffline ? "Sin datos de impacto" : `Equivalente a 🌲 ${data?.treesSaved || 0} árboles`,
+        subtitle: isOffline ? "Sin datos de impacto" : `Equivalente a 🌒 ${data?.treesSaved || 0} árboles`,
         icon: Leaf,
         badgeColor: isOffline
           ? "bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400 font-bold"
@@ -141,7 +141,7 @@ export default function KPICards({ data, hasSolar }) {
                   {card.title}
                 </span>
                 <div className="flex items-baseline gap-1.5 my-1.5">
-                  <span className={`text-2xl lg:text-3xl font-black font-mono tracking-tight ${card.textColor}`}>
+                  <span className={`${card.textColor} text-2xl lg:text-3xl font-black font-mono tracking-tight`}>
                     {card.value}
                   </span>
                   <span className="text-xs font-extrabold text-subtle">
@@ -153,13 +153,13 @@ export default function KPICards({ data, hasSolar }) {
                 </p>
               </div>
               
-              <div className={`p-3 rounded-xl border shadow-sm shrink-0 transition-transform group-hover:scale-110 ${card.badgeColor}`}>
+              <div className={`${card.badgeColor} p-3 rounded-xl border shadow-sm shrink-0 transition-transform group-hover:scale-110`}>
                 <Icon className="w-5 h-5" />
               </div>
             </div>
           </div>
         );
-      })}
+      }) }
     </div>
   );
 }

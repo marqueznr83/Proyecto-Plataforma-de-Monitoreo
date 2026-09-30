@@ -125,11 +125,7 @@ export default function Navbar({ data, onRefresh, isRefreshing }) {
               <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${pulseDot}`} />
             </span>
             <span className="font-extrabold tracking-wider">{isNoAC ? "CORTE AC (RESPALDO)" : visibleAlerts.length > 0 ? (hasCritical ? "CRÍTICO (ROJO)" : "ADVERTENCIA (AMARILLO)") : "ONLINE"}</span>
-            {isNoAC && (
-              <span className="bg-red-600 text-white font-mono px-2 py-0.5 rounded text-[11px] font-black shadow-inner flex items-center gap-1 ml-1">
-                ⏱️ {formattedShort}
-              </span>
-            )}
+            
             <span className="text-[11px] opacity-90 hidden md:inline">
               ({visibleAlerts.length > 0 ? `${visibleAlerts.length} alarmas sin leer` : "Operación Óptima"})
             </span>
