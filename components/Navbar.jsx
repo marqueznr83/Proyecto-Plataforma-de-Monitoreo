@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Sun, RefreshCw, Zap, Bell, AlertTriangle, ShieldAlert, CheckCircle2, Trash2, Send } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
-import { useACOutageTimer } from "@/components/useACOutageTimer";
 
 export default function Navbar({ data, onRefresh, isRefreshing }) {
   const [countdown, setCountdown] = useState(300);
@@ -56,7 +55,7 @@ export default function Navbar({ data, onRefresh, isRefreshing }) {
 
   const isOffline = data?.isOffline || false;
   const isNoAC = !isOffline && (data?.vac === 0 || data?.gridAC?.vac === 0);
-  const { formattedShort } = useACOutageTimer(data?.acOutageStartTime, isNoAC);
+  
 
 
   const hasCritical = visibleAlerts.some((a) => a.severity === "critical");
