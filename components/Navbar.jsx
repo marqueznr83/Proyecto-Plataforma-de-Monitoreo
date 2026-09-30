@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sun, RefreshCw, Settings, Zap, Bell, AlertTriangle, ShieldAlert, CheckCircle2, Trash2, Send } from "lucide-react";
+import { Sun, RefreshCw, Zap, Bell, AlertTriangle, ShieldAlert, CheckCircle2, Trash2, Send } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useACOutageTimer } from "@/components/useACOutageTimer";
 
-export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }) {
+export default function Navbar({ data, onRefresh, isRefreshing }) {
   const [countdown, setCountdown] = useState(300);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dismissedAlerts, setDismissedAlerts] = useState([]);
@@ -58,11 +58,15 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
   const isNoAC = !isOffline && (data?.vac === 0 || data?.gridAC?.vac === 0);
   const { formattedShort } = useACOutageTimer(data?.acOutageStartTime, isNoAC);
 
+
   const hasCritical = visibleAlerts.some((a) => a.severity === "critical");
   const hasWarning = visibleAlerts.some((a) => a.severity === "warning");
 
   // Status Colors (Green = Online, Red = Critical Alarm, Yellow = Warning)
   let badgeStyle = "bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400";
+  if (isNoAC) {
+    badgeStyle = "bg-red-500/20 border-red-500/60 text-red-600 dark:text-red-400 font-extrabold animate-pulse";
+  }
   let pulseDot = "bg-emerald-500";
   if (hasCritical) {
     badgeStyle = "bg-red-500/20 border-red-500/60 text-red-600 dark:text-red-300 font-bold animate-pulse";
@@ -256,15 +260,7 @@ export default function Navbar({ data, onRefresh, isRefreshing, onOpenSettings }
             <span>@tlgnelson_bot</span>
           </a>
 
-          {/* Settings Modal Button */}
-          <button
-            onClick={onOpenSettings}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 transition-all shadow-sm active:scale-95"
-            title="Configuración de Alarmas y Umbrales"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Alarmas & Config</span>
-          </button>
+          
         </div>
 
       </div>

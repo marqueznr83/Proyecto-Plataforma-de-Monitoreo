@@ -1,19 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export function useACOutageTimer(acOutageStartTime, isNoAC) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const localStartRef = useRef(null);
 
   useEffect(() => {
-    if (!isNoAC || !acOutageStartTime) {
+    if (!isNoAC) {
+      localStartRef.current = null;
       setElapsedSeconds(0);
       return;
     }
 
-    const startMs = typeof acOutageStartTime === "number" 
-      ? acOutageStartTime 
-      : new Date(acOutageStartTime).getTime();
+    let startMs = null;
+    if (acOutageStartTime) {
+      startMs = typeof acOutageStartTime === "number"
+        ? acOutageStartTime
+        : new Date(acOutageStartTime).getTime();
+    }
+
+    if (!startMs || isNaN(startMs)) {
+      if (!localStartRef.current) {
+        localStartRef.current = Date.now();
+      }
+      startMs = localStartRef.current;
+    }
 
     const updateTimer = () => {
       const now = Date.now();
@@ -33,20 +45,20 @@ export function useACOutageTimer(acOutageStartTime, isNoAC) {
   const pad = (num) => String(num).padStart(2, "0");
 
   const formattedClock = hours > 0
-    ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
-    : `${pad(minutes)}:${pad(seconds)}`;
+    ? pad(hours) + ":" + pad(minutes) + ":" + pad(seconds)
+    : pad(minutes) + ":" + pad(seconds);
 
   const formattedShort = hours > 0 
-    ? `${hours}h ${minutes}m ${seconds}s`
+    ? hours + "h " + minutes + "m " + seconds + "s"
     : minutes > 0
-    ? `${minutes}m ${seconds}s`
-    : `${seconds}s`;
+    ? minutes + "m " + seconds + "s"
+    : seconds + "s";
 
   const formattedLong = hours > 0
-    ? `${hours}h ${minutes}m ${seconds}s`
+    ? hours + "h " + minutes + "m " + seconds + "s"
     : minutes > 0
-    ? `${minutes} min ${seconds} seg`
-    : `${seconds} seg`;
+    ? minutes + " min " + seconds + " seg"
+    : seconds + " seg";
 
   return {
     elapsedSeconds,

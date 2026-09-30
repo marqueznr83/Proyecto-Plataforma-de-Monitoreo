@@ -6,7 +6,6 @@ import KPICards from "@/components/KPICards";
 import EnergyFlowDiagram from "@/components/EnergyFlowDiagram";
 import GenerationChart from "@/components/GenerationChart";
 import TelemetryDetails from "@/components/TelemetryDetails";
-import ConfigModal from "@/components/ConfigModal";
 import { Zap, GitBranch } from "lucide-react";
 
 export default function Home() {
@@ -15,7 +14,6 @@ export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [token, setToken] = useState("75433vd880684dfp20nav03t8zb10xp1");
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   // Custom Alarm & Inverter Configuration State
   const [alarmConfig, setAlarmConfig] = useState({
@@ -109,7 +107,6 @@ export default function Home() {
         data={data}
         onRefresh={fetchTelemetry}
         isRefreshing={isRefreshing}
-        onOpenSettings={() => setIsConfigOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -145,15 +142,7 @@ export default function Home() {
 
       </main>
 
-      {/* Settings & Alarms Modal */}
-      <ConfigModal
-        isOpen={isConfigOpen}
-        onClose={() => setIsConfigOpen(false)}
-        alarmConfig={alarmConfig}
-        onUpdateAlarmConfig={(newCfg) => setAlarmConfig(newCfg)}
-        telegramConfig={telegramConfig}
-        onUpdateTelegramConfig={handleUpdateTelegramConfig}
-      />
+      
 
       {/* Footer */}
       <footer className="theme-footer py-6 px-4 lg:px-8 mt-auto">
@@ -170,13 +159,7 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setIsConfigOpen(true)}
-              className="hover:text-amber-500 transition-colors flex items-center gap-1 font-medium"
-            >
-              <GitBranch className="w-4 h-4" />
-              <span>Configurar Alarmas & Sistema</span>
-            </button>
+            
           </div>
         </div>
       </footer>

@@ -971,6 +971,11 @@ function generateLiveTelemetry(token, config) {
   }
 
   let vac = config.simulateACOutage ? 0 : Math.round(229 + (Math.random() * 2 - 1));
+  if (vac === 0) {
+    if (!global.acOutageStartTime) global.acOutageStartTime = Date.now();
+  } else {
+    global.acOutageStartTime = null;
+  }
   const fac = vac > 0 ? Number((60.0 + (Math.random() * 0.04 - 0.02)).toFixed(2)) : 0;
   
   let batterySOC = config.customBatSOC !== null && !isNaN(config.customBatSOC)
