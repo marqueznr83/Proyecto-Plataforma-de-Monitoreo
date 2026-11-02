@@ -95,7 +95,7 @@ export default function Navbar({ data, onRefresh, isRefreshing }) {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-lg font-bold tracking-wide">
-                  {data?.plantName || "Residencial Sr. Nelson"}
+                  {data?.plantName || "Casa Nelson Márquez"}
                 </h1>
                 <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/40 text-amber-600 dark:text-amber-400 font-extrabold">
                   GROWATT
@@ -107,7 +107,7 @@ export default function Navbar({ data, onRefresh, isRefreshing }) {
                 )}
               </div>
               <p className="text-xs text-subtle flex items-center gap-1.5 mt-0.5">
-                <span>{data?.inverterModel || "Growatt Inverter UPS"}</span>
+                <span>{data?.inverterModel || "Growatt SPF 5000 ES"}</span>
                 <span>•</span>
                 <span className="font-mono text-[11px]">SN: {data?.serialNumber || "AOE9CJC02D"}</span>
               </p>

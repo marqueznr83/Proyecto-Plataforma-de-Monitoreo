@@ -10,11 +10,11 @@ import {
   Tooltip,
   ResponsiveContainer
 } from "recharts";
-import { Activity, Zap, Battery, Home, Sparkles } from "lucide-react";
+import { Activity, Zap, Battery, Home, Sun, Sparkles } from "lucide-react";
 
-export default function GenerationChart({ dailyHistory = [], hourlyData = [], hasSolar = false }) {
-  // Mode selection: "voltaje" (Voltaje Red AC) | "bateria" (SOC %) | "consumo" (kW)
-  const [metricMode, setMetricMode] = useState("voltaje");
+export default function GenerationChart({ dailyHistory = [], hourlyData = [], hasSolar = true }) {
+  // Mode selection: "solar" | "voltaje" | "bateria" | "consumo"
+  const [metricMode, setMetricMode] = useState("solar");
 
   // Determine source data: prioritize real recorded history from monitor
   let rawData = Array.isArray(dailyHistory) && dailyHistory.length > 0 ? dailyHistory : [];
@@ -23,8 +23,8 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
   if (rawData.length === 0) {
     const nowStr = new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", timeZone: "America/Caracas" });
     rawData = [
-      { time: "00:00", vac: 230, batterySOC: 100, batteryVoltage: 53.3, houseKW: 0.85, houseW: 850, temperature: 38.4 },
-      { time: nowStr, vac: 234.8, batterySOC: 66, batteryVoltage: 52.8, houseKW: 0.85, houseW: 850, temperature: 38.4 }
+      { time: "00:00", vac: 230, batterySOC: 100, batteryVoltage: 54.3, houseKW: 0.85, houseW: 850, temperature: 34.5, ppv: 0, vpv: 85.5 },
+      { time: nowStr, vac: 232.2, batterySOC: 100, batteryVoltage: 54.3, houseKW: 0.85, houseW: 850, temperature: 34.7, ppv: 0, vpv: 85.5 }
     ];
   }
 
@@ -32,13 +32,25 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
     time: d.time || "--:--",
     vac: d.vac !== undefined && d.vac !== null ? Number(d.vac) : 230,
     batterySOC: d.batterySOC !== undefined && d.batterySOC !== null ? Number(d.batterySOC) : 100,
-    batteryVoltage: d.batteryVoltage !== undefined && d.batteryVoltage !== null ? Number(d.batteryVoltage) : 53.3,
+    batteryVoltage: d.batteryVoltage !== undefined && d.batteryVoltage !== null ? Number(d.batteryVoltage) : 54.3,
     houseKW: d.houseKW !== undefined && d.houseKW !== null ? Number(d.houseKW) : (d.houseW ? Number((d.houseW / 1000).toFixed(2)) : 0.85),
-    temperature: d.temperature || 38.4
+    temperature: d.temperature || 34.7,
+    ppv: d.ppv !== undefined && d.ppv !== null ? Number(d.ppv) : (d.ppvKW ? Math.round(d.ppvKW * 1000) : 0),
+    vpv: d.vpv !== undefined && d.vpv !== null ? Number(d.vpv) : 85.5
   }));
 
   // Metric configurations
   const metricConfigs = {
+    solar: {
+      title: "Generación Solar Fotovoltaica (24h)",
+      subtitle: "Registro de potencia capturada por los paneles solares en Watts (W) y tensión DC",
+      dataKey: "ppv",
+      unit: "W",
+      strokeColor: "#f59e0b",
+      fillColor: "#f59e0b",
+      yDomain: [0, 'auto'],
+      formatter: (val) => [`${val} W`, "☀️ Potencia Solar (PV)"]
+    },
     voltaje: {
       title: "Voltaje de Entrada Red AC (24h)",
       subtitle: "Registro real de tensión de calle (V) y detección de cortes de suministro",
@@ -51,7 +63,7 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
     },
     bateria: {
       title: "Nivel de Carga Batería SOC (24h)",
-      subtitle: "Comportamiento real de descarga durante cortes y recarga con red AC",
+      subtitle: "Comportamiento real de descarga durante cortes y recarga con red AC y solar",
       dataKey: "batterySOC",
       unit: "%",
       strokeColor: "#10b981",
@@ -71,7 +83,7 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
     }
   };
 
-  const currentConfig = metricConfigs[metricMode] || metricConfigs.voltaje;
+  const currentConfig = metricConfigs[metricMode] || metricConfigs.solar;
 
   return (
     <div className="theme-card p-5 md:p-7 shadow-lg relative overflow-hidden">
@@ -100,10 +112,21 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
         {/* Metric Switcher */}
         <div className="flex items-center gap-1.5 theme-well p-1.5 rounded-xl shadow-sm overflow-x-auto max-w-full">
           <button
+            onClick={() => setMetricMode("solar")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all shrink-0 ${
+              metricMode === "solar"
+                ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                : "text-subtle hover:opacity-80"
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5" />
+            <span>Solar (W)</span>
+          </button>
+          <button
             onClick={() => setMetricMode("voltaje")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all shrink-0 ${
               metricMode === "voltaje"
-                ? "bg-blue-600 text-white shadow-md"
+                ? "bg-blue-600 text-white shadow-md font-black"
                 : "text-subtle hover:opacity-80"
             }`}
           >
@@ -114,7 +137,7 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
             onClick={() => setMetricMode("bateria")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all shrink-0 ${
               metricMode === "bateria"
-                ? "bg-emerald-600 text-white shadow-md"
+                ? "bg-emerald-600 text-white shadow-md font-black"
                 : "text-subtle hover:opacity-80"
             }`}
           >
@@ -125,7 +148,7 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
             onClick={() => setMetricMode("consumo")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all shrink-0 ${
               metricMode === "consumo"
-                ? "bg-purple-600 text-white shadow-md"
+                ? "bg-purple-600 text-white shadow-md font-black"
                 : "text-subtle hover:opacity-80"
             }`}
           >
@@ -189,8 +212,8 @@ export default function GenerationChart({ dailyHistory = [], hourlyData = [], ha
 
       {/* Footer Info */}
       <div className="mt-4 pt-3 border-t border-slate-700/30 flex flex-wrap items-center justify-between gap-2 text-[11px] text-subtle font-mono font-medium">
-        <span>📡 Puntos capturados en tiempo real por el monitor cada 5 min</span>
-        <span>Módulo: <strong>AOE9CJC02D</strong></span>
+        <span>📡 Registro continuo cada 5 min • Inversor Growatt SPF 5000 ES</span>
+        <span>Módulo SN: <strong>AOE9CJC02D</strong></span>
       </div>
 
     </div>

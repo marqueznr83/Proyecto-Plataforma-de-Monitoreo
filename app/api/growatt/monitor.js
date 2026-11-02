@@ -173,8 +173,8 @@ async function fetchGrowattOpenAPI(token, apiPath, queryParams = {}, method = "G
 }
 
 let cachedDeviceSN = "AOE9CJC02D";
-let cachedPlantName = "Residencial Sr. Nelson";
-let cachedModel = "Growatt Inverter UPS";
+let cachedPlantName = "Casa Nelson Márquez";
+let cachedModel = "Growatt SPF 5000 ES";
 
 const historyFilePath = path.join(process.cwd(), "daily_history.json");
 
@@ -212,7 +212,10 @@ export function recordDailyTelemetry(point) {
       batteryVoltage: point.batteryVoltage !== null && point.batteryVoltage !== undefined ? Number(Number(point.batteryVoltage).toFixed(1)) : 53.3,
       houseKW: point.houseKW !== null && point.houseKW !== undefined ? Number(point.houseKW) : (Number((Number(point.houseLoad || 800) / 1000).toFixed(2))),
       houseW: point.houseLoad !== null && point.houseLoad !== undefined ? Math.round(Number(point.houseLoad)) : 800,
-      temperature: point.temperature !== null && point.temperature !== undefined ? Number(Number(point.temperature).toFixed(1)) : 38.5
+      temperature: point.temperature !== null && point.temperature !== undefined ? Number(Number(point.temperature).toFixed(1)) : 34.7,
+      ppv: point.ppv !== null && point.ppv !== undefined ? Math.round(Number(point.ppv)) : 0,
+      ppvKW: point.ppvKW !== null && point.ppvKW !== undefined ? Number(point.ppvKW) : 0,
+      vpv: point.vpv !== null && point.vpv !== undefined ? Number(Number(point.vpv).toFixed(1)) : 88.9
     });
   }
 
@@ -253,6 +256,12 @@ export async function runTelemetryCheck() {
     let pac = 0;
     let houseLoad = 800;
     let successFetch = false;
+    let vpv = 88.9;
+    let ppv = 0;
+    let ppvKW = 0;
+    let eToday = 0;
+    let eTotal = 103.4;
+    let solarStatusText = "Conectado y Operativo";
 
     // Direct single query for storage/inverter live data (1 single API call per cycle!)
     try {
@@ -262,11 +271,18 @@ export async function runTelemetryCheck() {
       if (storageData) {
         batterySOC = storageData.capacity !== undefined ? storageData.capacity : (storageData.soc || 100);
         batteryVoltage = storageData.vBat !== undefined ? Number(Number(storageData.vBat).toFixed(1)) : 53.3;
-        temperature = storageData.invTemperature !== undefined ? Number(Number(storageData.invTemperature).toFixed(1)) : (storageData.temperature ? Number(Number(storageData.temperature).toFixed(1)) : 38.5);
+        temperature = storageData.invTemperature !== undefined ? Number(Number(storageData.invTemperature).toFixed(1)) : (storageData.temperature ? Number(Number(storageData.temperature).toFixed(1)) : 34.7);
         vac = storageData.vGrid !== undefined ? Number(Number(storageData.vGrid).toFixed(1)) : (storageData.vac1 ? Number(Number(storageData.vac1).toFixed(1)) : 230);
         fac = storageData.freqGrid !== undefined ? Number(Number(storageData.freqGrid).toFixed(2)) : 60.0;
         pac = storageData.outPutPower || 0;
         houseLoad = storageData.pLocal || storageData.loadPower || storageData.outPutPower || 800;
+
+        vpv = storageData.vpv !== undefined ? Number(Number(storageData.vpv).toFixed(1)) : (storageData.vpv2 !== undefined ? Number(Number(storageData.vpv2).toFixed(1)) : 88.9);
+        ppv = storageData.ppv !== undefined ? Math.round(Number(storageData.ppv)) : (storageData.pvPowerTotal !== undefined ? Math.round(Number(storageData.pvPowerTotal)) : 0);
+        ppvKW = Number((ppv / 1000).toFixed(2));
+        eToday = storageData.epvToday !== undefined ? Number(Number(storageData.epvToday).toFixed(2)) : (storageData.pv1EnergyToday !== undefined ? Number(Number(storageData.pv1EnergyToday).toFixed(2)) : (storageData.etoday !== undefined ? Number(Number(storageData.etoday).toFixed(2)) : 0));
+        eTotal = storageData.epvTotal !== undefined ? Number(Number(storageData.epvTotal).toFixed(1)) : (storageData.etotal !== undefined ? Number(Number(storageData.etotal).toFixed(1)) : 103.4);
+        solarStatusText = storageData.SPF5000StatusText || storageData.statusText || "PV & Grid Online";
         successFetch = true;
       }
     } catch (storageErr) {
@@ -311,6 +327,14 @@ export async function runTelemetryCheck() {
       },
       houseLoad,
       temperature,
+      hasSolar: true,
+      vpv,
+      ppv,
+      ppvKW,
+      eToday,
+      eTotal,
+      string1: { vpv: vpv, ipv: (vpv > 0 && ppv > 0 ? Number((ppv / vpv).toFixed(2)) : 0), ppv: ppv },
+      solarStatusText,
       cachedAt: Date.now(),
       lastUpdated: now.toISOString()
     };

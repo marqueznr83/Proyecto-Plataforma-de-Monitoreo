@@ -23,7 +23,7 @@ export default function Home() {
     lowBat: 60,
     critBat: 30,
     noAC: false,
-    hasSolar: false, // Inversor sin paneles solares por defecto (según especificación)
+    hasSolar: true, // Inversor sin paneles solares por defecto (según especificación)
     testBatSOC: 50
   });
 
@@ -57,7 +57,7 @@ export default function Home() {
       const query = new URLSearchParams({
         token: token,
         demo: isDemoMode,
-        hasSolar: alarmConfig.hasSolar,
+        hasSolar: true,
         minVac: alarmConfig.minVac,
         maxVac: alarmConfig.maxVac,
         lowBat: alarmConfig.lowBat,
@@ -128,19 +128,19 @@ export default function Home() {
         ) : (
           <>
             {/* Top KPI Summary Cards (dynamically switches between UPS mode and Solar mode) */}
-            <KPICards data={data} hasSolar={alarmConfig.hasSolar} />
+            <KPICards data={data} hasSolar={alarmConfig.hasSolar ?? true} />
 
             {/* High Priority Outage Banner below 4 KPI cards */}
             <ACOutageBanner data={data} />
 
             {/* Interactive Energy Flow Diagram (clean 3-node UPS view when no solar) */}
-            <EnergyFlowDiagram data={data} hasSolar={alarmConfig.hasSolar} />
+            <EnergyFlowDiagram data={data} hasSolar={alarmConfig.hasSolar ?? true} />
 
             {/* Historical Charts (Real 24h Telemetry: Grid AC Outages, Battery & Load) */}
-            <GenerationChart dailyHistory={data?.dailyHistory || []} hourlyData={data?.hourlyData || []} hasSolar={alarmConfig.hasSolar} />
+            <GenerationChart dailyHistory={data?.dailyHistory || []} hourlyData={data?.hourlyData || []} hasSolar={alarmConfig.hasSolar ?? true} />
 
             {/* Telemetry Diagnostics (Inverter AC, Battery BMS & Grid metrics) */}
-            <TelemetryDetails data={data} hasSolar={alarmConfig.hasSolar} />
+            <TelemetryDetails data={data} hasSolar={alarmConfig.hasSolar ?? true} />
           </>
         )}
 
